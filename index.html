@@ -1021,7 +1021,7 @@ function songRow(v, opts = {}) {
         has ? d.artist + (d.year ? ", " + d.year : "") : (s.channel || "")),
       has && opts.showVideo ? h("div", { class: "song-video" }, s.title) : null,
       s.embed_blocked ? h("div", { class: "blocked" }, "Plays only on YouTube") : null,
-      opts.chance != null ? h("div", { class: "chance" }, "Chance to be next: " + Math.round(opts.chance * 100) + "%") : null),
+      opts.chance != null ? h("div", { class: "chance" }, "Chance to be next: " + (opts.chance * 100).toFixed(2) + "%") : null),
     opts.extra || null,
     strip(v));
 }
