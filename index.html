@@ -1,0 +1,1592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1C2433">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Playlist Manager</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231C2433'/%3E%3Crect x='12' y='40' width='40' height='6' rx='3' fill='%232F5DA8'/%3E%3Crect x='12' y='40' width='12' height='6' rx='3' fill='%23D6333F'/%3E%3Cpath d='M26 16v18l14-9z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #EEF2F6; --surface: #FFFFFF; --ink: #1C2433; --muted: #5F6B7E; --line: #D5DCE6;
+    --blue: #2F5DA8; --red: #D6333F; --blue-soft: #DCE6F5; --red-soft: #F7DDE0; --empty: #E3E8EF;
+    --deck: #1C2433; --deck-ink: #F2F5F9; --deck-muted: #A9B4C6;
+    --title: "Barlow Semi Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+    --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --nav-h: 60px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11161F; --surface: #1A212D; --ink: #E7EBF1; --muted: #9AA5B7; --line: #2A3342;
+      --blue: #739BDD; --red: #EE6A74; --blue-soft: #22324D; --red-soft: #43242A; --empty: #283142;
+      --deck: #0C1017;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 var(--body);
+         padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px)); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* ── the deck: player pinned at the top ── */
+  .deck { position: sticky; top: 0; z-index: 20; background: var(--deck); color: var(--deck-ink);
+          padding-top: env(safe-area-inset-top, 0px); box-shadow: 0 2px 12px rgba(0,0,0,.25); }
+  .screen { position: relative; width: 100%; max-width: calc(45vh * 16 / 9); min-height: 200px; margin: 0 auto;
+            aspect-ratio: 16 / 9; background: #000; }
+  .screen > div, .screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .now { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; max-width: 900px; margin: 0 auto; }
+  .now-text { flex: 1; min-width: 0; }
+  .now-title { font: 600 1.15rem/1.2 var(--title); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now-sub { font-size: .8rem; color: var(--deck-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+              border: 0; background: transparent; color: inherit; }
+  .icon-btn svg { width: 24px; height: 24px; }
+  .icon-btn.primary { background: var(--blue); color: #fff; }
+  .deck .icon-btn:not(.primary):active { background: rgba(255,255,255,.12); }
+  .progress { height: 3px; background: rgba(255,255,255,.15); max-width: 900px; margin: 0 auto; }
+  .progress > i { display: block; height: 100%; width: 0; background: var(--blue); transition: width .25s linear; }
+  .deck.counted .progress > i { background: #7FA6E6; }
+  .times { display: flex; justify-content: space-between; gap: 8px; font-size: .72rem; color: var(--deck-muted);
+           padding: 3px 12px 7px; max-width: 900px; margin: 0 auto; font-variant-numeric: tabular-nums; }
+  .times .hint { flex: 1; text-align: center; }
+
+  /* ── pages ── */
+  main { max-width: 900px; margin: 0 auto; padding: 16px 14px 24px; }
+  h1 { font: 700 1.9rem/1.1 var(--title); margin: 4px 0 14px; letter-spacing: .005em; }
+  h2 { font: 600 1.25rem/1.2 var(--title); margin: 26px 0 10px; }
+  p.lead { margin: -6px 0 14px; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .small { font-size: .85rem; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 0; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px;
+         padding: 0 18px; border-radius: 22px; border: 1.5px solid var(--line); background: var(--surface);
+         font-weight: 600; font-size: .95rem; text-decoration: none; color: var(--ink); }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn.danger { color: var(--red); border-color: var(--red); background: transparent; }
+  .btn.quiet { border-color: transparent; background: transparent; padding: 0 10px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  label.field { display: block; margin: 0 0 12px; }
+  label.field > span { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=search], input[type=password], input[type=number], select, textarea {
+    width: 100%; min-height: 44px; padding: 8px 12px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--surface); }
+  textarea { min-height: 120px; resize: vertical; }
+  input[type=range] { width: 100%; accent-color: var(--blue); }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin-bottom: 8px; }
+  .switch input { width: 22px; height: 22px; accent-color: var(--blue); }
+  .seg { display: flex; border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+  .seg button { flex: 1; min-height: 42px; border: 0; background: transparent; font-size: .9rem; font-weight: 600; color: var(--muted); padding: 0 6px; }
+  .seg button + button { border-left: 1.5px solid var(--line); }
+  .seg button[aria-pressed=true] { background: var(--blue); color: #fff; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+
+  /* ── song lists: the jukebox strip is the signature ── */
+  ul.songs { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  ul.songs > li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; min-height: 60px; border-top: 1px solid var(--line); }
+  ul.songs > li:first-child { border-top: 0; }
+  ul.songs > li.tap { cursor: pointer; }
+  ul.songs > li.tap:active { background: var(--blue-soft); }
+  ul.songs > li.current { background: var(--blue-soft); }
+  .song-main { flex: 1; min-width: 0; }
+  .song-title { font: 600 1.05rem/1.2 var(--title); overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+                -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .song-sub { font-size: .8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .song-side { flex: none; width: 64px; text-align: right; font-size: .78rem; font-variant-numeric: tabular-nums; }
+  .strip { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--empty); margin: 4px 0 3px auto; width: 56px; }
+  .strip > .p { background: var(--blue); }
+  .strip > .s { background: var(--red); }
+  .counts { color: var(--muted); }
+  .counts b { font-weight: 600; }
+  .counts .cp { color: var(--blue); }
+  .counts .cs { color: var(--red); }
+  .rank { flex: none; width: 26px; text-align: right; font: 600 .95rem var(--title); color: var(--muted); }
+  .status { font-size: .75rem; font-weight: 600; color: var(--blue); margin-right: 8px; }
+  .chance { font-size: .75rem; color: var(--muted); }
+  .mini-btns { display: flex; gap: 2px; flex: none; }
+  .mini-btns .icon-btn { width: 36px; height: 40px; border-radius: 8px; color: var(--muted); }
+  .blocked { font-size: .72rem; color: var(--red); font-weight: 600; }
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; }
+
+  /* ── stats ── */
+  .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  @media (min-width: 600px) { .metrics { grid-template-columns: repeat(4, 1fr); } }
+  .metric { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .metric b { display: block; font: 700 1.9rem/1 var(--title); margin-bottom: 4px; }
+  .metric span { font-size: .8rem; color: var(--muted); }
+  .hbars { display: grid; gap: 8px; }
+  .hbar-label { display: flex; justify-content: space-between; gap: 10px; font-size: .85rem; }
+  .hbar-label span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 .95rem var(--title); }
+  .hbar-track { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--empty); margin-top: 3px; }
+  .hbar-track .p { background: var(--blue); } .hbar-track .s { background: var(--red); }
+  .vbars { display: flex; align-items: flex-end; gap: 2px; height: 130px; padding-top: 6px; }
+  .vbar { flex: 1; display: flex; flex-direction: column-reverse; min-width: 3px; height: 100%; }
+  .vbar .p { background: var(--blue); } .vbar .s { background: var(--red); } .vbar .n { background: var(--blue); }
+  .vaxis { display: flex; justify-content: space-between; font-size: .72rem; color: var(--muted); margin-top: 4px; }
+  .legend { display: flex; gap: 14px; font-size: .8rem; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chips button { min-height: 36px; padding: 0 14px; border-radius: 18px; border: 1.5px solid var(--line); background: var(--surface); font-size: .85rem; font-weight: 600; color: var(--muted); }
+  .chips button[aria-pressed=true] { border-color: var(--ink); color: var(--ink); }
+
+  /* ── bottom navigation ── */
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; background: var(--surface);
+             border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  nav.tabs button { flex: 1; height: var(--nav-h); border: 0; background: transparent; display: flex; flex-direction: column;
+                    align-items: center; justify-content: center; gap: 2px; font-size: .72rem; font-weight: 600; color: var(--muted); }
+  nav.tabs svg { width: 24px; height: 24px; }
+  nav.tabs button[aria-current=page] { color: var(--blue); }
+
+  /* ── toast & dialogs ── */
+  .toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+           z-index: 50; max-width: min(92vw, 520px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px;
+           font-size: .9rem; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  dialog { border: 0; border-radius: 18px; padding: 0; width: min(94vw, 560px); max-height: 86vh; background: var(--surface); color: var(--ink); }
+  dialog::backdrop { background: rgba(10, 14, 22, .55); }
+  .dlg { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-height: 86vh; }
+  .dlg h2 { margin: 0; }
+  .dlg .scroll { overflow: auto; min-height: 0; flex: 1; border: 1px solid var(--line); border-radius: 12px; }
+  .dlg .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .check-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--line); min-height: 48px; }
+  .check-row:first-child { border-top: 0; }
+  .check-row input { width: 20px; height: 20px; accent-color: var(--blue); flex: none; }
+  .song-video { font-size: .74rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now-title .by { font-weight: 500; opacity: .85; }
+  .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  @media (min-width: 700px) { .filters { grid-template-columns: 2fr 2fr 1fr 1fr; } }
+  details.panel > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center;
+                            gap: 10px; min-height: 32px; font: 600 1.15rem var(--title); }
+  details.panel > summary::-webkit-details-marker { display: none; }
+  details.panel > summary::after { content: "▾"; color: var(--muted); font-size: .9rem; }
+  details.panel[open] > summary::after { content: "▴"; }
+  .badge { margin-left: auto; font: 600 .75rem var(--body); color: #fff; background: var(--red); padding: 2px 8px; border-radius: 10px; }
+  .progress-bar { height: 6px; background: var(--empty); border-radius: 3px; overflow: hidden; margin: 12px 0 6px; }
+  .progress-bar > i { display: block; height: 100%; width: 0; background: var(--blue); transition: width .3s; }
+  h3.sec { font: 600 1.05rem var(--title); margin: 16px 0 6px; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  .fields .wide { grid-column: 1 / -1; }
+  .dup { border-top: 1px solid var(--line); }
+  .dup:first-child { border-top: 0; }
+  .dup-copies { padding: 0 12px 10px 42px; font-size: .85rem; }
+  .dup-copies summary { cursor: pointer; color: var(--blue); font-weight: 600; padding: 2px 0 6px; }
+  .radio-row { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; font-size: .9rem; }
+  .radio-row input { accent-color: var(--blue); margin-top: 3px; flex: none; }
+  ul.songs.flat { border: 0; border-radius: 0; }
+  .welcome p { max-width: 520px; margin-left: auto; margin-right: auto; }
+  #deckHolder { display: contents; }         /* phones: the deck is pinned at the top */
+
+  /* ── laptop layout: side menu; the player scrolls with the page and becomes a mini-player ── */
+  @media (min-width: 900px) {
+    body { padding-bottom: 0; padding-left: 96px; }
+    nav.tabs { top: 0; bottom: 0; right: auto; width: 96px; flex-direction: column; justify-content: flex-start;
+               padding: 20px 0 0; border-top: 0; border-right: 1px solid var(--line); }
+    nav.tabs button { flex: none; height: 76px; }
+    #deckHolder { display: block; max-width: 900px; margin: 18px auto 0; padding: 0 14px; }
+    .deck { position: relative; border-radius: 14px; overflow: hidden; box-shadow: none; padding-top: 0; }
+    .deck.mini { position: fixed; top: 16px; right: 16px; width: 380px; z-index: 40; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
+    .deck.mini .screen { max-width: none; }
+    .deck.mini .now-title { font-size: 1rem; }
+    .deck.mini #nowPos, .deck.mini .times .hint { display: none; }
+    .toast { bottom: 24px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="deckHolder"><header class="deck" id="deck" hidden>
+  <div class="screen"><div id="yt"></div></div>
+  <div class="now">
+    <div class="now-text"><div class="now-title" id="nowTitle"></div><div class="now-sub" id="nowSub"></div><div class="now-sub" id="nowPos" hidden></div></div>
+    <button class="icon-btn" id="btnStop" aria-label="Stop"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg></button>
+    <button class="icon-btn" id="btnSkip" aria-label="Skip (always counted as a skip)"><svg viewBox="0 0 24 24"><path d="M4 6l8 6-8 6zM12 6l8 6-8 6z" fill="currentColor"/></svg></button>
+    <button class="icon-btn primary" id="btnNext" aria-label="Next (played or skipped depending on how much you listened)"><svg viewBox="0 0 24 24"><path d="M6 6l9 6-9 6z" fill="currentColor"/><rect x="16" y="6" width="2.5" height="12" rx="1" fill="currentColor"/></svg></button>
+  </div>
+  <div class="progress"><i id="fill"></i></div>
+  <div class="times"><span id="t1">0:00</span><span class="hint" id="hint"></span><span id="t2">–</span></div>
+</header></div>
+
+<main id="view"></main>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="player"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/></svg>Player</button>
+  <button data-tab="library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h10M4 18h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V6.5l-3 1"/></svg>Library</button>
+  <button data-tab="playlists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="9" width="16" height="11" rx="2"/><path d="M6 6h12M8 3h8"/></svg>Playlists</button>
+  <button data-tab="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M10 20V5M15 20v-7M20 20V9"/></svg>Stats</button>
+  <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Settings</button>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<dialog id="dlg"></dialog>
+
+<script>
+"use strict";
+/* ═════════════════════ constants & helpers ═════════════════════ */
+const FORMAT = "playlist-manager-sync", VERSION = 1;
+const GH_API = new URLSearchParams(location.search).get("github_api") || "https://api.github.com";
+const ALL = "★ All songs (most played first)";
+const ORDERS = ["In order", "Shuffle", "Shuffle favourites", "Shuffle least played"];
+const ORDER_LABEL = { "In order": "In order", "Shuffle": "Shuffle", "Shuffle favourites": "Favourites", "Shuffle least played": "Least played" };
+const SKEW = 1.5;   // how strongly "favourites" / "least played" lean (1 = gentle, 2 = strong)
+// recency penalty: weight × (1 − e^(−t/τ)), t = time since last played through, τ = forget time / 3
+const FORGET_TIMES = { "Off": 0, "12 hours": 12, "1 day": 24, "2 days": 48, "3 days": 72, "1 week": 168, "2 weeks": 336, "1 month": 720 };
+const RECENCY_FLOOR = 0.02;
+const $ = (id) => document.getElementById(id);
+
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k === "text") el.textContent = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "value") el.value = v;
+    else if (k === "checked") el.checked = !!v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+const svg = (d) => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24");
+  s.innerHTML = d; return s; };
+const ICON = {
+  up: '<path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+  down: '<path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+  x: '<path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
+  back: '<path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+};
+function fmt(s) {
+  if (s == null || !isFinite(s)) return "–";
+  s = Math.floor(s); const hh = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return (hh ? hh + ":" + String(m).padStart(2, "0") : m) + ":" + String(sec).padStart(2, "0");
+}
+function fmtHours(sec) { sec = sec || 0; return sec >= 3600 ? (sec / 3600).toFixed(1) + " h" : Math.round(sec / 60) + " min"; }
+const utcNow = () => new Date().toISOString();
+function newUid() { const b = new Uint8Array(6); crypto.getRandomValues(b); return [...b].map(x => x.toString(16).padStart(2, "0")).join(""); }
+const isPlaceholder = (t) => !t || t.startsWith("YouTube video ");
+const watchUrl = (v) => "https://www.youtube.com/watch?v=" + v;
+function parseVideoId(t) {
+  t = t.trim(); if (/^[A-Za-z0-9_-]{11}$/.test(t)) return t;
+  const m = t.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/|\/v\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null;
+}
+function b64encode(str) {
+  const bytes = new TextEncoder().encode(str); let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64decode(b64) {
+  const bin = atob(b64.replace(/\s/g, "")); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+let toastTimer;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 3800); }
+
+/* ═════════════════════ data & merging (same rules as the PC app) ═════════════════════ */
+const emptyDoc = () => ({ format: FORMAT, version: VERSION, updated_at: null, songs: {}, playlists: {}, plays: {}, tombstones: {} });
+function normalize(d) { d = d || {}; return { format: FORMAT, version: VERSION, updated_at: d.updated_at || null,
+  songs: { ...(d.songs || {}) }, playlists: { ...(d.playlists || {}) }, plays: { ...(d.plays || {}) }, tombstones: { ...(d.tombstones || {}) } }; }
+const tsOf = (r) => r.updated_at || r.added_at || r.created_at || "";
+const blank = (v) => v == null || v === "";
+function mergeDocs(a, b) {   // on an exact tie, b wins
+  a = normalize(a); b = normalize(b);
+  const tomb = { ...b.tombstones };
+  for (const [k, v] of Object.entries(a.tombstones)) if (!(k in tomb) || v > tomb[k]) tomb[k] = v;
+  const songs = {};
+  for (const vid of new Set([...Object.keys(a.songs), ...Object.keys(b.songs)])) {
+    const x = a.songs[vid], y = b.songs[vid]; let rec;
+    if (x && y) {
+      const [nw, old] = tsOf(x) > tsOf(y) ? [x, y] : [y, x]; rec = { ...nw };
+      for (const f of ["channel", "duration"]) if (blank(rec[f]) && !blank(old[f])) rec[f] = old[f];
+      if (isPlaceholder(rec.title) && !isPlaceholder(old.title)) rec.title = old.title;
+      rec.embed_blocked = !!(x.embed_blocked || y.embed_blocked);
+      if (!rec.details && old.details) rec.details = old.details;   // never lose looked-up details
+      const adds = [x.added_at, y.added_at].filter(Boolean).sort(); rec.added_at = adds[0] || null;
+    } else rec = { ...(x || y) };
+    const t = tomb["song:" + vid]; if (t && t >= tsOf(rec)) continue;
+    songs[vid] = rec;
+  }
+  const playlists = {};
+  for (const uid of new Set([...Object.keys(a.playlists), ...Object.keys(b.playlists)])) {
+    const x = a.playlists[uid], y = b.playlists[uid];
+    const rec = { ...((x && y) ? (tsOf(x) > tsOf(y) ? x : y) : (x || y)) };
+    const t = tomb["playlist:" + uid]; if (t && t >= tsOf(rec)) continue;
+    const seen = new Set(); rec.songs = (rec.songs || []).filter(v => songs[v] && !seen.has(v) && seen.add(v));
+    playlists[uid] = rec;
+  }
+  const plays = {};
+  for (const src of [b, a]) for (const [uid, p] of Object.entries(src.plays)) {
+    if (uid in plays) continue;
+    if (!(p.v in songs) && ("song:" + p.v) in tomb) continue;
+    plays[uid] = p;
+  }
+  const ups = [a.updated_at, b.updated_at].filter(Boolean).sort();
+  return { format: FORMAT, version: VERSION, updated_at: ups.length ? ups[ups.length - 1] : null, songs, playlists, plays, tombstones: tomb };
+}
+function deepEqual(x, y) {
+  if (x === y) return true;
+  if (typeof x !== typeof y || x === null || y === null || typeof x !== "object") return false;
+  if (Array.isArray(x) !== Array.isArray(y)) return false;
+  const kx = Object.keys(x), ky = Object.keys(y); if (kx.length !== ky.length) return false;
+  return kx.every(k => Object.prototype.hasOwnProperty.call(y, k) && deepEqual(x[k], y[k]));
+}
+function sameContent(x, y) { const s = (d) => { const n = normalize(d); delete n.updated_at; return n; }; return deepEqual(s(x), s(y)); }
+
+/* ═════════════════════ storage (IndexedDB, on this phone) ═════════════════════ */
+let doc = emptyDoc();
+let settings = { threshold: 50, minSecs: 60, keepAwake: true, order: "In order", repeat: false, autoSync: true, forget: "2 days",
+                 sync: { owner: "", repo: "", path: "playlist-data.json", token: "" }, lastSync: null,
+                 name: "", shared: { owner: "", repo: "", path: "shared-playlist.json", token: "" }, sharedLast: null };
+const ui = { lib: { artist: "", album: "", from: "", to: "" }, stat: { artist: "", album: "", from: "", to: "" }, tab: "player", playlist: null, search: "", sort: "plays", period: 30, pick: ALL };
+const store = {
+  db: null,
+  open() { return new Promise((res, rej) => { const r = indexedDB.open("playlist-manager", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(this.db = r.result); r.onerror = () => rej(r.error); }); },
+  get(k) { return new Promise((res, rej) => { if (!this.db) return res(undefined); const q = this.db.transaction("kv").objectStore("kv").get(k);
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); },
+  set(k, v) { return new Promise((res, rej) => { if (!this.db) return res(); const t = this.db.transaction("kv", "readwrite");
+    t.objectStore("kv").put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); },
+};
+let saveTimer;
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => {
+  store.set("doc", doc).catch(() => toast("Couldn't save on this phone: storage may be full or blocked."));
+  store.set("settings", settings).catch(() => {}); }, 300); }
+let statsCache = null;
+function songStats() {
+  if (statsCache) return statsCache;
+  const s = {};
+  for (const p of Object.values(doc.plays)) {
+    const r = s[p.v] || (s[p.v] = { plays: 0, skips: 0, last: "", lastDone: "" });
+    if (p.o === "completed") { r.plays++; const t = p.e || p.s; if (t > r.lastDone) r.lastDone = t; }
+    else if (p.o === "skipped") r.skips++;
+    if (p.s > r.last) r.last = p.s;
+  }
+  return statsCache = s;
+}
+const st = (v) => songStats()[v] || { plays: 0, skips: 0, last: "", lastDone: "" };
+function changed(opts = {}) { statsCache = null; save(); if (!opts.noSync) scheduleSync(); if (!opts.noRender) render(); }
+function allSongsOrdered() {
+  return Object.keys(doc.songs).sort((a, b) => {
+    const x = st(a), y = st(b);
+    if (x.plays !== y.plays) return y.plays - x.plays;
+    if (x.last !== y.last) return x.last < y.last ? 1 : -1;
+    return doc.songs[a].title.toLowerCase().localeCompare(doc.songs[b].title.toLowerCase());
+  });
+}
+const playlistsSorted = () => Object.entries(doc.playlists).sort((a, b) => a[1].name.toLowerCase().localeCompare(b[1].name.toLowerCase()));
+function touchSong(v, patch) { Object.assign(doc.songs[v], patch, { updated_at: utcNow() }); }
+function touchPlaylist(uid) { doc.playlists[uid].updated_at = utcNow(); }
+
+/* ═════════════════════ player ═════════════════════ */
+const Q = { list: [], idx: -1, pl: null, played: new Set(), cur: null, listened: 0, lastT: null, playing: false, done: false, started: false, errors: 0 };
+let yt = null, ytReady = false, pendingVid = null;
+window.onYouTubeIframeAPIReady = () => { ytReady = true; if (pendingVid) { const v = pendingVid; pendingVid = null; loadVideo(v); } };
+function loadVideo(v) {
+  if (!ytReady) {
+    pendingVid = v;
+    if (!document.getElementById("yt-api")) {
+      const s = h("script", { id: "yt-api", src: "https://www.youtube.com/iframe_api" });
+      s.onerror = () => { toast("Couldn't load the YouTube player. Check your internet connection."); s.remove(); };
+      document.head.append(s);
+    }
+    return;
+  }
+  if (!yt) yt = new YT.Player("yt", { videoId: v, playerVars: { autoplay: 1, playsinline: 1, rel: 0, origin: location.origin },
+    events: { onReady: (e) => e.target.playVideo(), onStateChange, onError } });
+  else yt.loadVideoById(v);
+}
+function need(v) { const s = doc.songs[v]; return s && s.duration ? s.duration * settings.threshold / 100 : settings.minSecs; }
+function recency(v) {   // 1 = no penalty; songs played through recently get less
+  const hours = FORGET_TIMES[settings.forget] ?? 48, last = st(v).lastDone;
+  if (!hours || !last) return 1;
+  const t = Math.max(0, (Date.now() - Date.parse(last)) / 3.6e6);
+  return Math.max(RECENCY_FLOOR, 1 - Math.exp(-t / (hours / 3)));
+}
+function weights(vs, mode = settings.order) {
+  return vs.map(v => {
+    const s = st(v), ratio = (s.plays + 1) / (s.skips + 1);
+    const base = mode === "Shuffle favourites" ? ratio ** SKEW : mode === "Shuffle least played" ? ratio ** -SKEW : 1;
+    return base * recency(v);
+  });
+}
+function remaining() { return Q.list.map((v, i) => i).filter(i => !Q.played.has(Q.list[i])); }
+function pickNext() {
+  if (!Q.list.length) return null;
+  if (settings.order === "In order") { const i = Q.idx + 1; return i < Q.list.length ? i : (settings.repeat ? 0 : null); }
+  let rem = remaining();
+  if (!rem.length) {
+    if (!settings.repeat) return null;
+    Q.played = new Set(); rem = Q.list.map((v, i) => i).filter(i => i !== Q.idx); if (!rem.length) rem = [Q.idx];
+  }
+  const w = weights(rem.map(i => Q.list[i])); let r = Math.random() * w.reduce((a, b) => a + b, 0);
+  for (let k = 0; k < rem.length; k++) { r -= w[k]; if (r <= 0) return rem[k]; }
+  return rem[rem.length - 1];
+}
+function startCurrent() {
+  for (let guard = 0; guard <= Q.list.length; guard++) {
+    if (Q.idx == null || Q.idx < 0 || Q.idx >= Q.list.length) break;
+    const v = Q.list[Q.idx], s = doc.songs[v];
+    if (s && !s.embed_blocked) {
+      Q.played.add(v);
+      Q.cur = { uid: newUid(), v, pl: Q.pl, s: utcNow() };
+      Object.assign(Q, { listened: 0, lastT: null, playing: false, done: false, started: false });
+      $("deck").hidden = false; loadVideo(v); renderDeck(); render();
+      clearTimeout(Q.hintTimer);
+      Q.hintTimer = setTimeout(() => { if (Q.cur && !Q.started) $("hint").textContent = "Tap the video to start"; }, 5000);
+      return;
+    }
+    Q.played.add(v); Q.idx = pickNext();
+  }
+  stopAll("End of playlist");
+}
+function finishCurrent(mode) {
+  if (!Q.cur) return null;
+  const reached = Q.listened >= need(Q.cur.v);
+  const o = mode === "skip" ? "skipped" : mode === "complete" ? "completed"
+          : mode === "stop" ? (reached ? "completed" : "stopped") : (reached ? "completed" : "skipped");
+  doc.plays[Q.cur.uid] = { v: Q.cur.v, pl: Q.cur.pl, s: Q.cur.s, e: utcNow(), l: Math.round(Q.listened * 10) / 10, o };
+  Q.cur = null; Q.done = true; changed({ noRender: true });
+  return o;
+}
+function advance() { const n = pickNext(); if (n == null) { stopAll("End of playlist"); return; } Q.idx = n; startCurrent(); }
+function next(mode, quiet) {
+  const o = finishCurrent(mode);
+  if (o && !quiet) toast(o === "completed" ? "Counted as played" : "Counted as skipped");
+  advance();
+}
+function jump(i) { finishCurrent("auto"); Q.idx = i; startCurrent(); }
+function stopAll(msg) {
+  finishCurrent("stop");
+  if (yt && yt.stopVideo) yt.stopVideo();
+  Object.assign(Q, { list: [], idx: -1, pl: null, played: new Set(), cur: null, playing: false });
+  $("deck").hidden = true; wake(false); render();
+  if (msg) toast(msg);
+}
+function playFrom(list, name, startIdx) {
+  if (!list.length) { toast("This playlist has no songs yet."); return; }
+  finishCurrent("stop");
+  Object.assign(Q, { list: [...list], pl: name, played: new Set(), idx: -1, errors: 0 });
+  Q.idx = startIdx != null ? startIdx : pickNext();
+  ui.tab = "player"; startCurrent(); window.scrollTo(0, 0);
+}
+function learnFromPlayer() {
+  const v = Q.cur && Q.cur.v, s = v && doc.songs[v]; if (!s) return;
+  const patch = {};
+  const d = yt.getDuration ? Math.round(yt.getDuration()) : 0;
+  if (d && !s.duration) patch.duration = d;
+  if (isPlaceholder(s.title) && yt.getVideoData) {
+    const vd = yt.getVideoData() || {};
+    if (vd.title) patch.title = vd.title;
+    if (vd.author && !s.channel) patch.channel = vd.author;
+  }
+  if (Object.keys(patch).length) { touchSong(v, patch); changed({ noRender: true }); renderDeck(); }
+}
+function onStateChange(e) {
+  if (!Q.cur || Q.done) return;
+  if (e.data === 1) { Q.playing = true; Q.errors = 0; $("hint").textContent = "";
+    if (!Q.started) { Q.started = true; learnFromPlayer(); } wake(true); }
+  else if (e.data === 2) Q.playing = false;
+  else if (e.data === 0) {
+    const d = yt.getDuration ? yt.getDuration() : 0;
+    if (Q.lastT != null && d && d - Q.lastT < 2) Q.listened += Math.max(0, d - Q.lastT);
+    next("auto", true);
+  }
+}
+function onError(e) {
+  if (!Q.cur || Q.done) return;
+  const v = Q.cur.v, code = e.data;
+  Q.cur = null; Q.done = true;
+  let msg;
+  if (code === 101 || code === 150) { touchSong(v, { embed_blocked: true }); changed({ noRender: true });
+    msg = "This video can only be played on YouTube. Skipped it (it's marked in your library)."; }
+  else if (code === 100) msg = "This video is no longer available. Skipped it.";
+  else msg = "YouTube couldn't play this video (error " + code + "). Skipped it.";
+  if (++Q.errors >= 3) { stopAll("Stopped: 3 videos in a row failed. Check your internet connection."); return; }
+  toast(msg); advance();
+}
+setInterval(() => {
+  if (!yt || !Q.cur || Q.done || !yt.getCurrentTime) return;
+  const state = yt.getPlayerState ? yt.getPlayerState() : -1, t = yt.getCurrentTime() || 0;
+  if (state === 1) { if (Q.lastT != null) { const d = t - Q.lastT; if (d > 0 && d < 2) Q.listened += d; } Q.lastT = t; }
+  else Q.lastT = null;
+  const dur = yt.getDuration ? yt.getDuration() : 0;
+  $("t1").textContent = fmt(t); $("t2").textContent = dur ? fmt(dur) : "–";
+  $("fill").style.width = dur ? Math.min(100, t / dur * 100) + "%" : "0";
+  if (Q.started) {
+    const n = dur ? dur * settings.threshold / 100 : settings.minSecs, ok = Q.listened >= n;
+    $("deck").classList.toggle("counted", ok);
+    $("hint").textContent = ok ? "Counts as played" : "Next now = skip";
+  }
+}, 250);
+let wakeLock = null;
+async function wake(on) {
+  try {
+    if (on && settings.keepAwake && "wakeLock" in navigator && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => wakeLock = null);
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) { /* not allowed right now */ }
+}
+$("btnNext").onclick = () => next("auto");
+$("btnSkip").onclick = () => next("skip");
+$("btnStop").onclick = () => stopAll();
+function positionText() {
+  if (settings.order === "In order" || Q.list.length === 1) return (Q.pl || "Single song") + ", " + (Q.idx + 1) + " of " + Q.list.length;
+  return (Q.pl || "Single song") + ", " + settings.order.toLowerCase() + ": " + Q.played.size + " of " + Q.list.length;
+}
+function renderDeck() {
+  if (!Q.cur) return;
+  const s = doc.songs[Q.cur.v] || {}, d = det(Q.cur.v);
+  if (fullDetails(Q.cur.v)) {   // song, artist and year known: they're the main line, the video underneath
+    $("nowTitle").replaceChildren(d.title, h("span", { class: "by" }, " — " + d.artist + ", " + d.year));
+    $("nowSub").textContent = (s.title || "") + (s.channel ? " — " + s.channel : "");
+    $("nowPos").textContent = positionText(); $("nowPos").hidden = false;
+  } else {
+    $("nowTitle").textContent = s.title || Q.cur.v;
+    $("nowSub").textContent = (s.channel ? s.channel + " — " : "") + positionText();
+    $("nowPos").hidden = true;
+  }
+}
+
+/* ═════════════════════ GitHub sync ═════════════════════ */
+let syncing = false, dirty = 0, syncTimer = null;
+const syncReady = () => settings.sync.owner && settings.sync.repo && settings.sync.token;
+function scheduleSync() { dirty++; if (!settings.autoSync || !syncReady()) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(true), 30000); }
+const ghHeaders = (accept, cfg = settings.sync) => ({ Authorization: "Bearer " + cfg.token.trim(), Accept: accept || "application/vnd.github+json" });
+const repoUrl = (cfg = settings.sync) => `${GH_API}/repos/${encodeURIComponent(cfg.owner.trim())}/${encodeURIComponent(cfg.repo.trim())}`;
+const fileUrl = (cfg = settings.sync, def = "playlist-data.json") => repoUrl(cfg) + "/contents/" + ((cfg.path || "").trim() || def).split("/").map(encodeURIComponent).join("/");
+function explain(status, cfg = settings.sync) {
+  if (status === 401) return new Error("GitHub rejected the access token: it may be mistyped or expired.");
+  if (status === 403) return new Error("The access token isn't allowed to change files in this repository. Give it Contents: Read and write access. If the repository belongs to an organization, its owner may need to approve the token.");
+  if (status === 404) return new Error(`Repository ${cfg.owner}/${cfg.repo} not found, or the token can't access it.`);
+  return new Error("GitHub answered " + status + ".");
+}
+async function ghFetch(cfg = settings.sync, format = FORMAT, def = "playlist-data.json") {
+  let r;
+  try { r = await fetch(fileUrl(cfg, def), { headers: ghHeaders(null, cfg), cache: "no-store" }); }
+  catch (e) { throw new Error("Couldn't reach GitHub. Check your internet connection."); }
+  if (r.status === 404) {
+    const rr = await fetch(repoUrl(cfg), { headers: ghHeaders(null, cfg), cache: "no-store" });
+    if (!rr.ok) throw explain(rr.status, cfg);
+    return { remote: null, sha: null };
+  }
+  if (!r.ok) throw explain(r.status, cfg);
+  const meta = await r.json(); let text;
+  if (meta.encoding === "base64" && meta.content) text = b64decode(meta.content);
+  else { const raw = await fetch(fileUrl(cfg, def), { headers: ghHeaders("application/vnd.github.raw+json", cfg), cache: "no-store" });
+         if (!raw.ok) throw explain(raw.status, cfg); text = await raw.text(); }
+  const d = JSON.parse(text);
+  if (d.format !== format) throw new Error("That file isn't a Playlist Manager " + (format === FORMAT ? "sync" : "shared playlist") + " file.");
+  return { remote: d, sha: meta.sha };
+}
+async function ghPut(merged, sha, cfg = settings.sync, message = "Sync", def = "playlist-data.json") {
+  const body = { message, content: b64encode(JSON.stringify({ ...merged, updated_at: utcNow() })) };
+  if (sha) body.sha = sha;
+  let r;
+  try { r = await fetch(fileUrl(cfg, def), { method: "PUT", headers: { ...ghHeaders(null, cfg), "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  catch (e) { throw new Error("Couldn't reach GitHub. Check your internet connection."); }
+  if (r.status === 409 || r.status === 422) return false;   // someone else synced in between
+  if (!r.ok) throw explain(r.status, cfg);
+  return true;
+}
+const counts = (d) => ({ songs: Object.keys(d.songs).length, plays: Object.keys(d.plays).length });
+async function syncNow(quiet) {
+  if (syncing || !syncReady()) return;
+  syncing = true; const startDirty = dirty; renderSyncStatus("Syncing…");
+  try {
+    let done = false;
+    for (let attempt = 0; attempt < 3 && !done; attempt++) {
+      const { remote, sha } = await ghFetch();
+      const before = counts(doc), merged = mergeDocs(doc, remote);
+      if ((remote && sameContent(merged, remote)) || await ghPut(merged, sha)) {
+        doc = mergeDocs(doc, merged);            // keeps anything recorded while syncing
+        statsCache = null; done = true;
+        const after = counts(doc), parts = [];
+        if (after.songs > before.songs) parts.push((after.songs - before.songs) + " new songs");
+        if (after.plays > before.plays) parts.push((after.plays - before.plays) + " plays from other devices");
+        if (parts.length) toast("Synced: " + parts.join(", "));
+        else if (!quiet) toast("Synced: everything was already up to date");
+      }
+    }
+    if (!done) throw new Error("Another device was syncing at the same moment. Try again in a few seconds.");
+    settings.lastSync = { at: utcNow(), ok: true };
+  } catch (e) {
+    settings.lastSync = { at: utcNow(), ok: false, msg: e.message };
+    if (!quiet) toast("Sync failed: " + e.message);
+  } finally {
+    syncing = false; save(); render();
+    if (dirty !== startDirty) scheduleSync();
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && Q.playing) wake(true);
+  if (document.visibilityState === "hidden" && syncTimer && settings.autoSync) { clearTimeout(syncTimer); syncTimer = null; syncNow(true); }
+  if (document.visibilityState === "hidden" && sharedTimer && sharedReady()) { clearTimeout(sharedTimer); sharedTimer = null; syncShared(true); }
+});
+
+
+/* ═════════════════════ song details (MusicBrainz), same rules as the laptop version ═════════════════════ */
+const MB_API = new URLSearchParams(location.search).get("musicbrainz_api") || "https://musicbrainz.org/ws/2";
+const MB_GAP = 1200;                      // MusicBrainz allows about one request per second
+class LookupFailed extends Error {}
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+let mbLast = 0;
+async function mbSearch(query, limit = 25) {
+  const url = `${MB_API}/recording?` + new URLSearchParams({ query, fmt: "json", limit: String(limit) });
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const wait = mbLast + MB_GAP - Date.now(); if (wait > 0) await sleep(wait); mbLast = Date.now();
+    let r;
+    try { r = await fetch(url); }
+    catch (e) { if (attempt < 2) { await sleep(3000); continue; } throw new LookupFailed("Couldn't reach MusicBrainz. Check your internet connection."); }
+    if (r.ok) return (await r.json()).recordings || [];
+    if ([429, 500, 502, 503, 504].includes(r.status) && attempt < 3) { await sleep(3000 * (attempt + 1)); continue; }
+    throw new LookupFailed("MusicBrainz answered " + r.status + ".");
+  }
+  throw new LookupFailed("MusicBrainz is too busy right now. Try again later.");
+}
+const esc = (t) => t.replace(/([+\-!(){}\[\]^"~*?:\\/]|&&|\|\|)/g, "\\$1");
+const NOISE = /\b(official|video|audio|music|lyrics?|videoclip|visuali[sz]er|hd|hq|4k|remaster(ed)?|upgrade|version|testo|promo)\b/g;
+const LIVE_RE = /\b(live|unplugged|in concerto|in concert|dal vivo|ao vivo|en vivo|tiny desk)\b/i;
+const COVER_RE = /\bcover\b/i;
+const WHOLE_SHOW_RE = /tiny desk|full album|full concert|full suite|live studio album|\bconcert\b/i;
+const YEAR_RE = /(?<!\d)(19[5-9]\d|20[0-3]\d)(?!\d)/g;
+const COMMON = new Set(["official", "video", "audio", "music", "remastered", "remaster", "version", "concert", "session", "sessions", "studio", "album", "songs", "lyrics", "visualizer"]);
+function plain(t) {
+  return (t || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+const squash = (t) => plain(t).replace(/ /g, "");
+const cleanSong = (t) => plain((t || "").replace(/[\(\[\{][^\)\]\}]*[\)\]\}]/g, " ")).replace(NOISE, " ").replace(/\s+/g, " ").trim();
+function matches(a, b) {   // Ratcliff/Obershelp matching characters, as Python's difflib.SequenceMatcher
+  if (!a.length || !b.length) return 0;
+  let best = 0, ai = 0, bj = 0, prev = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = new Array(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j++) if (a[i - 1] === b[j - 1]) {
+      cur[j] = prev[j - 1] + 1; if (cur[j] > best) { best = cur[j]; ai = i - best; bj = j - best; } }
+    prev = cur;
+  }
+  return best ? best + matches(a.slice(0, ai), b.slice(0, bj)) + matches(a.slice(ai + best), b.slice(bj + best)) : 0;
+}
+const ratio = (a, b) => (a.length + b.length) ? 2 * matches(a, b) / (a.length + b.length) : 1;
+function titleSim(a, b) { a = cleanSong(a); b = cleanSong(b); if (!a || !b) return 0; return a === b ? 1 : ratio(a, b); }
+function sameArtist(a, b) {
+  a = squash(a); b = squash(b); if (!a || !b) return false;
+  if (a === b || (Math.min(a.length, b.length) >= 5 && (a.includes(b) || b.includes(a)))) return true;
+  return ratio(a, b) >= 0.88;
+}
+const yearOf = (d) => d && /^\d{4}/.test(d) ? +d.slice(0, 4) : null;
+function channelArtist(channel) {
+  let ch = (channel || "").trim(); const topic = /\s-\s*Topic$/.test(ch);
+  ch = ch.replace(/\s*-\s*Topic$/, "");
+  for (const suf of [/VEVO$/i, /\s+Official$/i, /\s+Collection$/i, /\s+songs$/i, /\s+Music$/i, /\s+HD$/i]) ch = ch.replace(suf, "");
+  return [ch.trim(), topic];
+}
+function parseVideo(title, channel) {
+  const raw = (title || "").normalize("NFKC").replace(/[“”]/g, '"');
+  const brackets = [...raw.matchAll(/[\(\[\{]([^\)\]\}]*)[\)\]\}]/g)].map(m => m[1]);
+  let t = raw.replace(/[\(\[\{][^\)\]\}]*[\)\]\}]/g, " "), tail = "";
+  const bar = t.indexOf(" | "); if (bar >= 0) { tail = t.slice(bar + 3); t = t.slice(0, bar); }
+  t = t.replace(/\s+(ft\.?|feat\.?|featuring)\s.*$/i, "");
+  const quoted = t.match(/"([^"]{2,})"/);
+  let parts;
+  if (quoted) {
+    const outside = t.replace(quoted[0], " ").trim().replace(/\s*[-–—:]\s*$|^\s*[-–—:]\s*/g, "");
+    parts = [outside.trim(), quoted[1]].filter(Boolean);
+  } else parts = t.split(/\s+[-–—]\s+|\s+[-–—](?=\S)|(?<=\S)[-–—]\s+|(?<=[\p{L}\p{N}_]):\s+/u);
+  parts = parts.map(p => p.replace(/^[\s"'«»]+|[\s"'«»]+$/g, ""));
+  if (LIVE_RE.test(raw)) parts = parts.map(p => p.replace(/\s+(live|unplugged|dal vivo|ao vivo)\b.*$/i, "") || p);
+  parts = parts.filter(p => p && !/^\d+\.?$/.test(p) && cleanSong(p));
+  const [ch, topic] = channelArtist(channel);
+  let cands = [];
+  if (parts.length >= 2) {
+    const hit = parts.findIndex(p => ch && sameArtist(p, ch));
+    if (quoted) cands = parts.length === 2 ? [[parts[0], parts[1]]] : [[null, parts[parts.length - 1]]];
+    else if (hit >= 0) { const artist = parts[hit], rest = parts.filter(p => !sameArtist(p, artist)); cands = rest.length ? [[artist, rest[0]]] : [[null, artist]]; }
+    else cands = [[parts[0], parts[1]], [parts[1], parts[0]]];
+  } else if (parts.length) cands = [[ch || null, parts[0]]];
+  const noYearNoise = raw.replace(/remaster\w*\s*\d{4}|\d{4}\s*(digital\s*)?remaster\w*/gi, " ");
+  const years = [...noYearNoise.matchAll(YEAR_RE)].map(m => +m[1]);
+  const hints = [...parts, ...brackets, ...tail.split(" | "), ch].map(squash).filter(Boolean);
+  return { cands, parts, brackets, hints, channel: ch, topic, live: LIVE_RE.test(raw), cover: COVER_RE.test(raw),
+           wholeShow: WHOLE_SHOW_RE.test(raw), year: years.length ? years[years.length - 1] : null };
+}
+const credit = (r) => (r["artist-credit"] || []).map(a => (a.name || "") + (a.joinphrase || "")).join("").trim();
+const mainArtist = (r) => { const ac = r["artist-credit"] || []; return ac.length ? (ac[0].name || "").trim() : credit(r); };
+function isLiveRec(r) {
+  if ((r.disambiguation || "").toLowerCase().includes("live")) return true;
+  const rels = r.releases || [];
+  return rels.length > 0 && rels.every(x => ((x["release-group"] || {})["secondary-types"] || []).includes("Live"));
+}
+function bestAlbum(r) {
+  const rels = r.releases || [], official = rels.filter(x => x.status == null || x.status === "Official");
+  const pool = official.length ? official : rels; if (!pool.length) return null;
+  const rank = (x) => { const rg = x["release-group"] || {}, kind = rg["primary-type"], extra = rg["secondary-types"] || [];
+    const tier = kind === "Album" && extra.every(e => e === "Soundtrack") ? 0 : ["EP", "Single"].includes(kind) && !extra.length ? 1
+      : kind === "Album" && !extra.includes("Compilation") && !extra.includes("Live") ? 2 : 3;
+    return [tier, x.date || "9999"]; };
+  const best = pool.reduce((a, b) => { const ra = rank(a), rb = rank(b); return (rb[0] < ra[0] || (rb[0] === ra[0] && rb[1] < ra[1])) ? b : a; });
+  const rg = best["release-group"] || {}; let name = rg.title || best.title;
+  if (rank(best)[0] === 1) name += rg["primary-type"] === "Single" ? " (single)" : " (EP)";
+  return name;
+}
+const matching = (recs, song, th = 0.85) => recs.filter(r => titleSim(song, r.title || "") >= th);
+const earliest = (recs) => recs.reduce((a, b) => { const ka = a["first-release-date"] || "9999", kb = b["first-release-date"] || "9999";
+  return kb < ka || (kb === ka && (+b.score || 0) > (+a.score || 0)) ? b : a; });
+function corroborated(artist, hints) { const a = squash(artist); return !!a && hints.some(h => a === h || (a.length >= 4 && h.includes(a)) || (h.length >= 5 && a.includes(h))); }
+function mbOptions(recs, limit = 5) {
+  const seen = new Set(), out = [];
+  const sorted = [...recs].sort((a, b) => ((+b.score || 0) - (+a.score || 0)) || ((a["first-release-date"] || "9999") < (b["first-release-date"] || "9999") ? -1 : 1));
+  for (const r of sorted) {
+    const key = squash(credit(r)) + "|" + cleanSong(r.title || ""); if (seen.has(key) || !squash(credit(r))) continue; seen.add(key);
+    const same = recs.filter(x => squash(credit(x)) + "|" + cleanSong(x.title || "") === key);
+    const studio = same.filter(x => !isLiveRec(x)); const first = earliest(studio.length ? studio : same);
+    out.push({ artist: mainArtist(first), title: first.title, album: bestAlbum(first), year: yearOf(first["first-release-date"]), mbid: first.id });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+async function resolveDetails(title, channel, search = mbSearch) {
+  const info = parseVideo(title, channel);
+  const result = { artist: null, title: null, album: null, year: null, original_artist: null,
+                   kind: info.cover ? "cover" : info.live ? "live" : "studio", status: "not_found", mbid: null, candidates: [], note: null };
+  let pool = [], found = [], viaArtist = null, song = null;
+  for (const [artist, s] of info.cands.slice(0, 2)) {
+    if (!artist) continue;
+    const recs = await search(`recording:"${esc(s)}" AND artist:"${esc(artist)}"`, 15); pool = pool.concat(recs);
+    const good = matching(recs, s).filter(r => sameArtist(artist, credit(r)));
+    if (good.length) { found = good; viaArtist = artist; song = s; break; }
+  }
+  const songs = [...new Set(info.cands.map(c => c[1]).filter(Boolean))];
+  let corro = found.length > 0;
+  if (!found.length) {
+    if (info.wholeShow) { result.note = "A whole concert or album: add the details by hand if you like."; return result; }
+    for (const s of songs.slice(0, 2)) {
+      const recs = matching(await search(`recording:"${esc(s)}"`, 25), s); pool = pool.concat(recs);
+      if (!recs.length) continue;
+      const byHint = recs.filter(r => corroborated(credit(r), info.hints));
+      if (byHint.length) { const first = earliest(byHint); found = byHint.filter(r => sameArtist(credit(r), credit(first))); corro = true; song = s; break; }
+      if (!found.length) { const first = earliest(recs); found = recs.filter(r => sameArtist(credit(r), credit(first))); song = s; }
+    }
+  }
+  result.candidates = mbOptions(pool);
+  if (!found.length) return result;
+  const originalArtist = mainArtist(earliest(found));
+  const studio = found.filter(r => !isLiveRec(r)), original = earliest(studio.length ? studio : found);
+  const baseTitle = original.title || song;
+  const others = info.parts.filter(p => titleSim(p, song) < 0.85 && !sameArtist(p, originalArtist));
+  const titlePerformer = others.length && !viaArtist ? others[0] : null;
+  const noDashUploader = info.parts.length === 1 && !info.topic && info.channel && !sameArtist(info.channel, originalArtist);
+  const isCover = info.cover || !!titlePerformer || noDashUploader;
+  let status = corro && titleSim(song, baseTitle) >= 0.9 ? "confident" : "check";
+  if (isCover) {
+    const performer = titlePerformer || info.channel || null; let year = null;
+    if (performer) {
+      let own = pool.filter(r => sameArtist(performer, credit(r)) && titleSim(song, r.title || "") >= 0.85);
+      if (!own.length && !sameArtist(performer, originalArtist))
+        own = matching((await search(`recording:"${esc(song)}" AND artist:"${esc(performer)}"`, 10)).filter(r => sameArtist(performer, credit(r))), song);
+      if (own.length) year = yearOf(earliest(own)["first-release-date"]);
+    }
+    if (!info.cover && !titlePerformer) status = "check";
+    Object.assign(result, { artist: performer || originalArtist, title: baseTitle + " (cover)", album: "cover", year: year || info.year, original_artist: originalArtist, kind: "cover" });
+  } else if (info.live) {
+    let year = info.year; const live = found.filter(isLiveRec);
+    if (!year && live.length) {
+      const words = new Set(plain(title).split(" ").filter(w => w.length >= 5 && !COMMON.has(w)));
+      const named = live.filter(r => (r.releases || []).some(x => plain(x.title).split(" ").some(w => words.has(w))));
+      const pick = named.length ? named : (info.topic ? live : []);
+      if (pick.length) { const r = earliest(pick); const c = (r.disambiguation || "").match(/(?<!\d)(19[5-9]\d|20[0-3]\d)(?!\d)/);
+        year = c ? +c[1] : yearOf(r["first-release-date"]); }
+    }
+    Object.assign(result, { artist: originalArtist, title: baseTitle + " (live)", album: "live", year, kind: "live" });
+  } else Object.assign(result, { artist: originalArtist, title: baseTitle, album: bestAlbum(original), year: yearOf(original["first-release-date"]), kind: "studio" });
+  return Object.assign(result, { status, mbid: original.id });
+}
+function applyOption(cur, o) {
+  const kind = cur.kind || "studio";
+  if (kind === "cover") return { ...cur, title: o.title + " (cover)", original_artist: o.artist, album: "cover", mbid: o.mbid };
+  if (kind === "live") return { ...cur, artist: o.artist, title: o.title + " (live)", album: "live", mbid: o.mbid };
+  return { ...cur, artist: o.artist, title: o.title, album: o.album, year: o.year, mbid: o.mbid };
+}
+const scan = { running: false, cancel: false, done: 0, total: 0, found: 0 };
+const unscanned = () => Object.keys(doc.songs).filter(v => !doc.songs[v].details);
+async function startScan(vids) {
+  if (scan.running || !vids.length) return;
+  Object.assign(scan, { running: true, cancel: false, done: 0, total: vids.length, found: 0 }); render();
+  try {
+    for (const v of vids) {
+      if (scan.cancel) break;
+      const s = doc.songs[v];
+      if (s && !(s.details && s.details.status === "manual")) {
+        const r = await resolveDetails(s.title, s.channel);
+        if (doc.songs[v]) { touchSong(v, { details: { ...r, scanned_at: utcNow() } }); scan.found += r.status !== "not_found"; changed({ noRender: true }); }
+      }
+      scan.done++; renderScan();
+    }
+    toast(scan.cancel ? `Stopped after ${scan.done} songs.` : `Looked up ${scan.done} songs: found details for ${scan.found}.`);
+  } catch (e) { toast((e.message || "Looking up song details stopped.") + " The songs looked up so far are saved."); }
+  finally { scan.running = false; render(); }
+}
+function renderScan() {
+  const bar = document.getElementById("scanFill"), txt = document.getElementById("scanText");
+  if (bar) bar.style.width = (scan.done / Math.max(scan.total, 1) * 100) + "%";
+  if (txt) txt.textContent = `Looking up songs on MusicBrainz… ${scan.done} of ${scan.total} (about ${Math.max(1, Math.round((scan.total - scan.done) * 2 * MB_GAP / 60000))} min left)`;
+}
+function setDetails(v, d, status = "manual") {
+  const a = (d.album || "").trim().toLowerCase();
+  touchSong(v, { details: { ...(doc.songs[v].details || {}), ...d, kind: a === "cover" ? "cover" : a === "live" ? "live" : "studio", status, scanned_at: utcNow() } });
+}
+const det = (v) => (doc.songs[v] && doc.songs[v].details) || {};
+const fullDetails = (v) => { const d = det(v); return !!(d.artist && d.title && d.year); };
+
+/* ═════════════════════ duplicates (same rules as the laptop version) ═════════════════════ */
+const DUP_NOISE = /\b(official|video|audio|music|lyrics?|videoclip|visuali[sz]er|hd|hq|4k|remaster(ed)?|upgrade|version|testo|with)\b/g;
+function songKeys(title, channel) {
+  let t = (title || "").normalize("NFKC").replace(/[\(\[\{][^\)\]\}]*[\)\]\}]/g, " ").split(" | ")[0];
+  t = t.replace(/\s+(ft\.?|feat\.?|featuring)\s.*$/i, "");
+  const parts = t.split(/\s+[-–—]\s+|\s+[-–—](?=\S)|(?<=\S)[-–—]\s+/).filter(p => p.trim() && !/^\s*\d+\s*$/.test(p));
+  const p0 = (x) => (x || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const sq = (x) => p0(x).replace(/ /g, "");
+  const ch = sq((channel || "").trim().replace(/\s*-\s*Topic$/, "").replace(/VEVO$/i, ""));
+  const clean = (s) => p0(s).replace(DUP_NOISE, " ").replace(/\s+/g, " ").trim();
+  let keys;
+  if (parts.length >= 2) {
+    const rest = parts.filter(p => sq(p) !== ch);
+    if (ch && rest.length && rest.length < parts.length) keys = [[ch, clean(rest[0])]];
+    else if (parts.length === 2) keys = [[sq(parts[0]), clean(parts[1])], [sq(parts[1]), clean(parts[0])]];
+    else keys = [[sq(parts[0]), clean(parts[1])]];
+  } else keys = [[ch, clean(parts[0] || t)]];
+  return keys.filter(k => k[0] && k[1]).map(k => k.join("|"));
+}
+function duplicateGroups() {
+  const parent = {}, root = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const owner = {};
+  for (const v of Object.keys(doc.songs)) parent[v] = v;
+  for (const [v, s] of Object.entries(doc.songs))
+    for (const k of songKeys(s.title, s.channel)) { if (k in owner) parent[root(v)] = root(owner[k]); else owner[k] = v; }
+  const sets = {};
+  for (const v of Object.keys(doc.songs)) (sets[root(v)] = sets[root(v)] || []).push(v);
+  const keepFirst = (a, b) => (st(b).plays - st(a).plays) || ((doc.songs[a].embed_blocked ? 1 : 0) - (doc.songs[b].embed_blocked ? 1 : 0))
+    || ((doc.songs[a].duration ? 0 : 1) - (doc.songs[b].duration ? 0 : 1)) || (doc.songs[a].added_at || "").localeCompare(doc.songs[b].added_at || "");
+  return Object.values(sets).filter(g => g.length > 1).map(g => g.sort(keepFirst))
+    .sort((a, b) => doc.songs[a[0]].title.toLowerCase().localeCompare(doc.songs[b[0]].title.toLowerCase()));
+}
+function mergeDuplicates(plan) {   // [[keep, [remove…]], …]: history and playlist places move to the kept copy
+  let removed = 0;
+  if (plan.some(([, rm]) => rm.some(d => Q.list.includes(d)))) stopAll();
+  for (const [keep, rm] of plan) for (const d of rm) {
+    for (const [uid, p] of Object.entries(doc.plays)) if (p.v === d) { doc.plays[newUid()] = { ...p, v: keep }; delete doc.plays[uid]; }
+    for (const [pu, pl] of Object.entries(doc.playlists)) if (pl.songs.includes(d)) {
+      pl.songs = pl.songs.includes(keep) ? pl.songs.filter(x => x !== d) : pl.songs.map(x => x === d ? keep : x); touchPlaylist(pu); }
+    if (present(shared.items[d])) { sharedRemove(d); if (!present(shared.items[keep])) sharedAdd([keep]); }
+    delete doc.songs[d]; doc.tombstones["song:" + d] = utcNow(); removed++;
+  }
+  changed(); return removed;
+}
+
+
+/* ═════════════════════ shared playlist (a private repository in a shared GitHub organization) ═════════════════════
+   Merged song by song: each song remembers when it was last added and removed, so additions from
+   several people never overwrite each other, and a removed song doesn't come back. */
+const SHARED_FORMAT = "playlist-manager-shared", SHARED_ID = "__shared__", SHARED_FILE = "shared-playlist.json";
+const emptyShared = () => ({ format: SHARED_FORMAT, version: 1, updated_at: null, name: "Shared playlist", name_at: "",
+                             items: {}, order: [], order_at: "", songs: {} });
+let shared = emptyShared(), sharedSyncing = false, sharedTimer = null;
+const sharedReady = () => !!(settings.shared.owner && settings.shared.repo && settings.shared.token);
+const sharedOn = () => sharedReady() || Object.keys(shared.items).length > 0;
+const present = (it) => !!it && (!it.removed || (it.added && it.added > it.removed));
+function sharedList() {
+  const inOrder = shared.order.filter(v => present(shared.items[v]));
+  const seen = new Set(inOrder);
+  const rest = Object.keys(shared.items).filter(v => present(shared.items[v]) && !seen.has(v))
+    .sort((a, b) => shared.items[a].added.localeCompare(shared.items[b].added));
+  return [...inOrder, ...rest].filter(v => doc.songs[v]);
+}
+function mergeSongRec(x, y) {    // the song-record rules of mergeDocs, for one song (on a tie, y wins)
+  if (!x || !y) return { ...(x || y) };
+  const [nw, old] = tsOf(x) > tsOf(y) ? [x, y] : [y, x], rec = { ...nw };
+  for (const f of ["channel", "duration"]) if (blank(rec[f]) && !blank(old[f])) rec[f] = old[f];
+  if (isPlaceholder(rec.title) && !isPlaceholder(old.title)) rec.title = old.title;
+  if (!rec.details && old.details) rec.details = old.details;
+  rec.embed_blocked = !!(x.embed_blocked || y.embed_blocked);
+  return rec;
+}
+function mergeShared(a, b) {
+  a = { ...emptyShared(), ...(a || {}) }; b = { ...emptyShared(), ...(b || {}) };
+  const items = {};
+  for (const v of new Set([...Object.keys(a.items), ...Object.keys(b.items)])) {
+    const x = a.items[v] || {}, y = b.items[v] || {};
+    const added = [x.added, y.added].filter(Boolean).sort().pop() || null;
+    const removed = [x.removed, y.removed].filter(Boolean).sort().pop() || null;
+    items[v] = { added, removed, by: (x.added || "") > (y.added || "") ? x.by : (y.by ?? x.by) };
+  }
+  const songs = {};
+  for (const v of new Set([...Object.keys(a.songs), ...Object.keys(b.songs)])) songs[v] = mergeSongRec(a.songs[v], b.songs[v]);
+  const [o, oat] = a.order_at > b.order_at ? [a.order, a.order_at] : [b.order, b.order_at];
+  const [n, nat] = a.name_at > b.name_at ? [a.name, a.name_at] : [b.name, b.name_at];
+  return { format: SHARED_FORMAT, version: 1, updated_at: [a.updated_at, b.updated_at].filter(Boolean).sort().pop() || null,
+           name: n, name_at: nat, items, order: [...o], order_at: oat, songs };
+}
+const sameShared = (x, y) => { const s = (d) => { const n = { ...emptyShared(), ...d }; delete n.updated_at; return n; }; return deepEqual(s(x), s(y)); };
+function saveShared() { store.set("shared", shared).catch(() => {}); }
+function sharedChanged() {
+  statsCache = null; saveShared(); render();
+  if (sharedReady()) { clearTimeout(sharedTimer); sharedTimer = setTimeout(() => syncShared(true), 20000); }
+}
+function sharedAdd(vids) {
+  const now = utcNow();
+  for (const v of vids) {
+    if (!doc.songs[v]) continue;
+    shared.items[v] = { ...(shared.items[v] || {}), added: now, by: settings.name || null };
+    shared.songs[v] = mergeSongRec(shared.songs[v], doc.songs[v]);
+    if (!shared.order.includes(v)) shared.order = [...sharedList().filter(x => x !== v), v];
+  }
+  shared.order_at = now; sharedChanged();
+}
+function sharedRemove(v) {
+  const now = utcNow(); shared.items[v] = { ...(shared.items[v] || {}), removed: now };
+  shared.order = sharedList().filter(x => x !== v); shared.order_at = now; sharedChanged();
+}
+function sharedMove(i, d) {
+  const l = sharedList(), j = i + d; if (j < 0 || j >= l.length) return;
+  [l[i], l[j]] = [l[j], l[i]]; shared.order = l; shared.order_at = utcNow(); sharedChanged();
+}
+function sharedIntoLibrary() {   // shared songs become part of your library (your plays and stats stay yours)
+  let added = 0;
+  for (const [v, it] of Object.entries(shared.items)) {
+    if (!present(it) || !shared.songs[v]) continue;
+    if (!doc.songs[v]) {
+      doc.songs[v] = { ...shared.songs[v], updated_at: utcNow() }; delete doc.tombstones["song:" + v]; added++;
+    } else {
+      const m = mergeSongRec(doc.songs[v], shared.songs[v]);
+      if (!deepEqual(m, doc.songs[v])) doc.songs[v] = m;
+    }
+  }
+  return added;
+}
+async function syncShared(quiet) {
+  if (sharedSyncing || !sharedReady()) return;
+  sharedSyncing = true; const before = new Set(sharedList());
+  try {
+    let done = false;
+    for (let attempt = 0; attempt < 3 && !done; attempt++) {
+      const { remote, sha } = await ghFetch(settings.shared, SHARED_FORMAT, SHARED_FILE);
+      const merged = mergeShared(shared, remote);
+      // add what this library knows about the shared songs (titles, lengths, details), including songs just added by others
+      for (const v of Object.keys(merged.items)) if (doc.songs[v]) merged.songs[v] = mergeSongRec(merged.songs[v], doc.songs[v]);
+      if ((remote && sameShared(merged, remote)) || await ghPut(merged, sha, settings.shared, `Shared playlist: update from ${settings.name || "someone"}`, SHARED_FILE)) {
+        shared = mergeShared(shared, merged); done = true;
+      }
+    }
+    if (!done) throw new Error("Someone else was updating the shared playlist at the same moment. Try again in a few seconds.");
+    const newSongs = sharedIntoLibrary(); saveShared(); if (newSongs) changed({ noRender: true });
+    const fresh = sharedList().filter(v => !before.has(v)).length;
+    settings.sharedLast = { at: utcNow(), ok: true };
+    if (fresh && before.size) toast(`Shared playlist: ${fresh} new song${fresh > 1 ? "s" : ""}`);
+    else if (!quiet) toast("Shared playlist is up to date");
+  } catch (e) {
+    settings.sharedLast = { at: utcNow(), ok: false, msg: e.message };
+    if (!quiet) toast("Shared playlist: " + e.message);
+  } finally { sharedSyncing = false; save(); render(); }
+}
+setInterval(() => { if (document.visibilityState === "visible" && sharedReady()) syncShared(true); }, 3 * 60 * 1000);
+
+/* ═════════════════════ keep this browser's data from being cleaned up automatically ═════════════════════ */
+async function ensurePersist() {
+  try { if (navigator.storage && navigator.storage.persist && !(await navigator.storage.persisted())) await navigator.storage.persist(); } catch (e) {}
+}
+
+/* ═════════════════════ views ═════════════════════ */
+function strip(v) {
+  const s = st(v), n = s.plays + s.skips;
+  return h("div", { class: "song-side" },
+    h("div", { class: "muted" }, fmt(doc.songs[v] && doc.songs[v].duration)),
+    h("div", { class: "strip", "aria-hidden": "true" },
+      n ? h("span", { class: "p", style: `width:${s.plays / n * 100}%` }) : null,
+      n ? h("span", { class: "s", style: `width:${s.skips / n * 100}%` }) : null),
+    h("div", { class: "counts", "aria-label": `${s.plays} plays, ${s.skips} skips` },
+      h("b", { class: "cp" }, s.plays), " / ", h("b", { class: "cs" }, s.skips)));
+}
+function songRow(v, opts = {}) {
+  const s = doc.songs[v]; if (!s) return null;
+  const d = det(v), has = !!(d.title && d.artist);
+  return h("li", { class: (opts.onclick ? "tap " : "") + (opts.current ? "current" : ""), onclick: opts.onclick },
+    opts.rank != null ? h("span", { class: "rank" }, opts.rank) : null,
+    h("div", { class: "song-main" },
+      h("div", { class: "song-title" }, has ? d.title : s.title),
+      h("div", { class: "song-sub" }, opts.status ? h("span", { class: "status" }, opts.status) : null,
+        has ? d.artist + (d.year ? ", " + d.year : "") : (s.channel || "")),
+      has && opts.showVideo ? h("div", { class: "song-video" }, s.title) : null,
+      s.embed_blocked ? h("div", { class: "blocked" }, "Plays only on YouTube") : null,
+      opts.chance != null ? h("div", { class: "chance" }, "Chance to be next: " + Math.round(opts.chance * 100) + "%") : null),
+    opts.extra || null,
+    strip(v));
+}
+function seg(options, current, onpick, label) {
+  return h("div", { class: "seg", role: "group", "aria-label": label },
+    options.map(o => h("button", { "aria-pressed": String(o === current), title: o, onclick: () => onpick(o) }, ORDER_LABEL[o] || o)));
+}
+function orderControls() {
+  return h("div", {},
+    seg(ORDERS, settings.order, (o) => { settings.order = o; save(); render(); }, "Play order"),
+    h("label", { class: "switch" }, h("span", {}, "Repeat when every song has played"),
+      h("input", { type: "checkbox", checked: settings.repeat, onchange: (e) => { settings.repeat = e.target.checked; save(); } })));
+}
+function detailOptions() {
+  const artists = new Set(), albums = new Set(), years = new Set();
+  for (const s of Object.values(doc.songs)) { const d = s.details; if (!d) continue;
+    if (d.artist) artists.add(d.artist); if (d.original_artist) artists.add(d.original_artist);
+    if (d.album) albums.add(d.album); if (d.year) years.add(+d.year); }
+  const byName = (a, b) => a.toLowerCase().localeCompare(b.toLowerCase());
+  return { artists: [...artists].sort(byName), albums: [...albums].sort(byName), years: [...years].sort((a, b) => a - b) };
+}
+function filterControls(f, onchange) {
+  const o = detailOptions(); if (!o.artists.length && !o.albums.length) return null;
+  const sel = (key, label, all, items) => h("select", { "aria-label": label, onchange: (e) => { f[key] = e.target.value; onchange(); } },
+    h("option", { value: "" }, all), items.map(x => h("option", { value: String(x), selected: String(f[key]) === String(x) }, String(x))));
+  return h("div", { class: "filters" }, sel("artist", "Artist", "All artists", o.artists),
+    sel("album", "Album (“cover” and “live” list covers and live versions)", "All albums", o.albums),
+    sel("from", "From year", "From year", o.years), sel("to", "To year", "To year", o.years));
+}
+const filterActive = (f) => !!(f.artist || f.album || f.from || f.to);
+function passes(v, f) {
+  if (!filterActive(f)) return true;
+  const d = det(v);
+  if (f.artist && d.artist !== f.artist && d.original_artist !== f.artist) return false;
+  if (f.album && d.album !== f.album) return false;
+  if ((f.from || f.to) && !d.year) return false;
+  if (f.from && +d.year < +f.from) return false;
+  if (f.to && +d.year > +f.to) return false;
+  return true;
+}
+function listFor(name) {
+  if (name === ALL) return allSongsOrdered();
+  if (name === sharedName()) return sharedList();
+  const p = Object.values(doc.playlists).find(x => x.name === name); return p ? p.songs.filter(v => doc.songs[v]) : [];
+}
+
+function viewPlayer(v) {
+  v.append(h("h1", {}, "Player"));
+  if (!Object.keys(doc.songs).length) {
+    v.append(h("div", { class: "empty welcome" }, h("h2", { style: "margin-top:0" }, "Welcome! Your library is empty."),
+      h("p", {}, "Your library and listening history are kept in this browser, on this device only. They're not sent anywhere unless you set up sync with your own GitHub account."),
+      h("div", { class: "row", style: "justify-content:center" },
+        h("button", { class: "btn primary", onclick: () => { go("library"); addSongsDialog(); } }, "Add YouTube links"),
+        h("button", { class: "btn", onclick: () => { go("settings"); setTimeout(() => { const b = document.getElementById("backupPanel"); if (b) b.scrollIntoView(); }, 50); } }, "Open a shared file"),
+        h("button", { class: "btn quiet", onclick: () => go("settings") }, "Sync with GitHub"))));
+    return;
+  }
+  if (!Q.cur && !Q.list.length) {
+    const names = [ALL, ...(sharedOn() ? [sharedName()] : []), ...playlistsSorted().map(([, p]) => p.name)];
+    if (!names.includes(ui.pick)) ui.pick = ALL;
+    v.append(h("div", { class: "panel" },
+      h("label", { class: "field" }, h("span", {}, "Playlist"),
+        h("select", { onchange: (e) => { ui.pick = e.target.value; render(); } },
+          names.map(n => h("option", { value: n, selected: n === ui.pick }, n)))),
+      orderControls(),
+      h("button", { class: "btn primary", style: "width:100%", onclick: () => playFrom(listFor(ui.pick), ui.pick) }, "Play")));
+    const list = listFor(ui.pick);
+    v.append(list.length ? h("ul", { class: "songs" }, list.map((x, i) => songRow(x, { rank: ui.pick === ALL ? i + 1 : null,
+      onclick: () => playFrom(list, ui.pick, i) }))) : h("div", { class: "empty" }, "No songs in this playlist yet."));
+    return;
+  }
+  v.append(h("div", { class: "panel" }, orderControls(),
+    h("button", { class: "btn danger", onclick: () => stopAll() }, "Stop playing")));
+  const rem = new Set(remaining()); let odds = {};
+  if (settings.order !== "In order") {
+    const idx = [...rem], w = weights(idx.map(i => Q.list[i]));
+    const tot = w.reduce((a, b) => a + b, 0) || 1; idx.forEach((i, k) => odds[i] = w[k] / tot);
+  }
+  let order = Q.list.map((x, i) => i);
+  if (settings.order !== "In order") order.sort((a, b) => (odds[b] ?? -1) - (odds[a] ?? -1));
+  v.append(h("h2", {}, "Queue"),
+    h("p", { class: "lead small" }, settings.order === "In order" ? `${rem.size} songs not played yet in this session. Tap one to play it now.`
+      : `The next song is picked when this one ends, among the ${rem.size} not played yet. Tap one to play it now.`),
+    h("ul", { class: "songs" }, order.map(i => songRow(Q.list[i], {
+      current: Q.cur && i === Q.idx, status: Q.cur && i === Q.idx ? "Playing" : (Q.played.has(Q.list[i]) ? "Played" : null),
+      chance: odds[i], onclick: () => { if (!(Q.cur && i === Q.idx)) jump(i); } }))));
+}
+
+function detailsPanel() {
+  const vs = Object.keys(doc.songs), todo = unscanned(), c = { found: 0, check: 0, not_found: 0 };
+  for (const x of vs) { const d = doc.songs[x].details; if (!d) continue;
+    if (d.status === "confident" || d.status === "manual") c.found++; else if (d.status in c) c[d.status]++; }
+  const box = h("details", { class: "panel tools", open: scan.running || todo.length === vs.length || c.check > 0 || null },
+    h("summary", {}, h("span", {}, "Song details: artist, album, year"),
+      c.check ? h("span", { class: "badge" }, c.check + " to check") : null),
+    h("p", { class: "muted small", style: "margin:8px 0" }, "Looked up on MusicBrainz, the open music encyclopedia (only song titles are sent). Covers and live versions get “(cover)” or “(live)” after the title, and “cover” or “live” as album."),
+    h("div", { class: "metrics" },
+      h("div", { class: "metric" }, h("b", {}, c.found), h("span", {}, "found")),
+      h("div", { class: "metric" }, h("b", {}, c.check), h("span", {}, "to check")),
+      h("div", { class: "metric" }, h("b", {}, c.not_found), h("span", {}, "not found")),
+      h("div", { class: "metric" }, h("b", {}, todo.length), h("span", {}, "not looked up yet"))));
+  const acts = h("div", { class: "row", style: "margin-top:12px" });
+  if (scan.running) {
+    box.append(h("div", { class: "progress-bar" }, h("i", { id: "scanFill" })), h("p", { class: "muted small", id: "scanText", style: "margin:0" }));
+    acts.append(h("button", { class: "btn", onclick: () => { scan.cancel = true; } }, "Stop"));
+  } else if (todo.length) {
+    acts.append(h("button", { class: "btn primary", onclick: () => startScan(todo) },
+      `Find details for ${todo.length} song${todo.length > 1 ? "s" : ""} (about ${Math.max(1, Math.round(todo.length * 2 * MB_GAP / 60000))} min)`));
+  }
+  if (c.check + c.not_found) acts.append(h("button", { class: "btn", onclick: reviewDialog }, `Review ${c.check + c.not_found} songs`));
+  box.append(acts);
+  if (scan.running) setTimeout(renderScan, 0);
+  else if (todo.length) box.append(h("p", { class: "muted small" }, "It keeps going while you listen. Keep this page open until it finishes."));
+  return box;
+}
+function viewLibrary(v) {
+  v.append(h("h1", {}, "Library"));
+  const total = Object.keys(doc.songs).length;
+  if (total) v.append(detailsPanel());
+  const search = h("input", { type: "search", placeholder: "Search titles, channels, artists, albums", value: ui.search, "aria-label": "Search",
+    oninput: (e) => { ui.search = e.target.value; fillList(); } });
+  v.append(h("div", { style: "margin-bottom:10px" }, search));
+  const filters = filterControls(ui.lib, () => fillList()); if (filters) v.append(filters);
+  v.append(h("div", { class: "row", style: "margin-bottom:12px" },
+    h("select", { class: "grow", style: "width:auto", "aria-label": "Sort", onchange: (e) => { ui.sort = e.target.value; fillList(); } },
+      [["plays", "Most played"], ["az", "A to Z"], ["new", "Recently added"]].map(([k, l]) => h("option", { value: k, selected: ui.sort === k }, l))),
+    h("button", { class: "btn primary", onclick: addSongsDialog }, "Add songs"),
+    total > 1 ? h("button", { class: "btn", onclick: duplicatesDialog }, "Find duplicates") : null));
+  const info = h("div", { class: "row", style: "justify-content:space-between;margin-bottom:8px" }), list = h("ul", { class: "songs" });
+  v.append(info, list);
+  function fillList() {
+    let vs = ui.sort === "plays" ? allSongsOrdered() : Object.keys(doc.songs);
+    const name = (x) => (det(x).title || doc.songs[x].title).toLowerCase();
+    if (ui.sort === "az") vs.sort((a, b) => name(a).localeCompare(name(b)));
+    if (ui.sort === "new") vs.sort((a, b) => (doc.songs[b].added_at || "").localeCompare(doc.songs[a].added_at || ""));
+    const q = ui.search.trim().toLowerCase();
+    if (q) vs = vs.filter(x => { const s = doc.songs[x], d = det(x);
+      return [s.title, s.channel, d.artist, d.title, d.album, d.original_artist].join(" ").toLowerCase().includes(q); });
+    vs = vs.filter(x => passes(x, ui.lib));
+    const narrowed = !!q || filterActive(ui.lib);
+    info.replaceChildren(...[h("span", { class: "muted small" }, total ? `${vs.length} of ${total} songs` : "No songs yet. Tap Add songs to paste YouTube links."),
+      narrowed && vs.length ? h("button", { class: "btn primary", onclick: () => playFrom(vs, "Library selection") }, `▶ Play these ${vs.length}`) : null].filter(Boolean));
+    list.replaceChildren(...vs.map(x => songRow(x, { showVideo: true, onclick: () => songDialog(x) })).filter(Boolean));
+    list.hidden = !vs.length;
+  }
+  fillList();
+}
+function viewPlaylists(v) {
+  if (ui.playlist) return viewPlaylist(v, ui.playlist);
+  v.append(h("div", { class: "row", style: "justify-content:space-between" }, h("h1", {}, "Playlists"),
+    h("button", { class: "btn primary", onclick: newPlaylistDialog }, "New playlist")));
+  const rows = [[ALL, { name: ALL, songs: Object.keys(doc.songs) }],
+    ...(sharedOn() ? [[SHARED_ID, { name: sharedName(), songs: sharedList() }]] : []), ...playlistsSorted()];
+  v.append(h("ul", { class: "songs" }, rows.map(([uid, p]) => h("li", { class: "tap", onclick: () => { ui.playlist = uid; render(); window.scrollTo(0, 0); } },
+    h("div", { class: "song-main" }, h("div", { class: "song-title" }, p.name),
+      h("div", { class: "song-sub" }, p.songs.filter(x => doc.songs[x]).length + " songs"))))));
+}
+const sharedName = () => "🤝 " + (shared.name || "Shared playlist");
+function viewPlaylist(v, uid) {
+  const isAll = uid === ALL, isShared = uid === SHARED_ID;
+  const p = isAll ? { name: ALL } : isShared ? { name: sharedName() } : doc.playlists[uid];
+  if (!p) { ui.playlist = null; return viewPlaylists(v); }
+  const list = isAll ? allSongsOrdered() : isShared ? sharedList() : p.songs.filter(x => doc.songs[x]);
+  v.append(h("button", { class: "btn quiet", onclick: () => { ui.playlist = null; render(); } }, svg(ICON.back), "Playlists"),
+    h("h1", {}, p.name),
+    h("div", { class: "row", style: "margin-bottom:14px" },
+      h("button", { class: "btn primary", disabled: !list.length, onclick: () => playFrom(list, p.name) }, "Play: " + ORDER_LABEL[settings.order].toLowerCase()),
+      isAll ? null : h("button", { class: "btn", onclick: () => pickSongsDialog(uid) }, "Add songs"),
+      isAll ? null : h("button", { class: "btn quiet", onclick: () => isShared ? sharedRenameDialog() : renameDialog(uid) }, "Rename"),
+      isAll || isShared ? null : h("button", { class: "btn quiet", style: "color:var(--red)", onclick: () => deletePlaylistDialog(uid) }, "Delete"),
+      isShared && sharedReady() ? h("button", { class: "btn quiet", disabled: sharedSyncing, onclick: () => syncShared(false) }, sharedSyncing ? "Syncing…" : "Sync now") : null));
+  if (isAll) v.append(h("p", { class: "lead small" }, "Every song in your library, most played first. It re-sorts itself as you listen."));
+  if (isShared) v.append(h("p", { class: "lead small" }, sharedReady()
+    ? "Shared through GitHub: everyone's additions, removals and reordering show up for the others within a few minutes. Your plays and skips stay yours."
+    : "Connect it in Settings → Shared playlist to share it with your friends."));
+  if (!list.length) { v.append(h("div", { class: "empty" }, isAll ? "No songs yet." : "This playlist is empty. Tap Add songs.")); return; }
+  const remove = (x, i) => { if (isShared) sharedRemove(x); else { p.songs = list.filter((_, k) => k !== i); touchPlaylist(uid); changed(); } };
+  const move = (i, d) => isShared ? sharedMove(i, d) : movePl(uid, i, d);
+  v.append(h("ul", { class: "songs" }, list.map((x, i) => songRow(x, {
+    rank: isAll ? i + 1 : null, onclick: () => playFrom(list, p.name, i),
+    status: isShared && shared.items[x] && shared.items[x].by ? "Added by " + shared.items[x].by : null,
+    extra: isAll ? null : h("div", { class: "mini-btns", onclick: (e) => e.stopPropagation() },
+      h("button", { class: "icon-btn", "aria-label": "Move up", disabled: i === 0, onclick: () => move(i, -1) }, svg(ICON.up)),
+      h("button", { class: "icon-btn", "aria-label": "Move down", disabled: i === list.length - 1, onclick: () => move(i, 1) }, svg(ICON.down)),
+      h("button", { class: "icon-btn", "aria-label": "Remove from playlist", onclick: () => remove(x, i) }, svg(ICON.x))),
+  }))));
+}
+function sharedRenameDialog() {
+  const name = h("input", { type: "text", value: shared.name || "", "aria-label": "Playlist name" });
+  openDialog(h("h2", {}, "Rename the shared playlist"), h("p", { class: "muted small", style: "margin:0" }, "The new name shows up for everyone."), name,
+    h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"),
+      h("button", { class: "btn primary", onclick: () => { if (name.value.trim()) { shared.name = name.value.trim(); shared.name_at = utcNow(); closeDialog(); sharedChanged(); } } }, "Rename")));
+}
+function movePl(uid, i, d) {
+  const p = doc.playlists[uid], l = p.songs.filter(x => doc.songs[x]); const j = i + d;
+  if (j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; p.songs = l; touchPlaylist(uid); changed();
+}
+
+function viewStats(v) {
+  v.append(h("h1", {}, "Stats"));
+  const periods = [[7, "7 days"], [30, "30 days"], [90, "90 days"], [365, "Year"], [0, "All time"]];
+  v.append(h("div", { class: "chips", role: "group", "aria-label": "Period" },
+    periods.map(([d, l]) => h("button", { "aria-pressed": String(ui.period === d), onclick: () => { ui.period = d; render(); } }, l))));
+  const since = ui.period ? new Date(Date.now() - ui.period * 864e5).toISOString() : "";
+  const statFilters = filterControls(ui.stat, () => render()); if (statFilters) v.append(statFilters);
+  const plays = Object.values(doc.plays).filter(p => p.s >= since && ["completed", "skipped", "stopped"].includes(p.o) && doc.songs[p.v] && passes(p.v, ui.stat));
+  if (!plays.length) { v.append(h("div", { class: "empty" }, "No listening in this period yet. Play some songs and your stats appear here.")); return; }
+  const P = plays.filter(p => p.o === "completed").length, S = plays.filter(p => p.o === "skipped").length;
+  const secs = plays.reduce((a, p) => a + (p.l || 0), 0);
+  v.append(h("div", { class: "metrics" },
+    h("div", { class: "metric" }, h("b", {}, P), h("span", {}, "plays")),
+    h("div", { class: "metric" }, h("b", {}, S), h("span", {}, "skips")),
+    h("div", { class: "metric" }, h("b", {}, P + S ? Math.round(S / (P + S) * 100) + "%" : "–"), h("span", {}, "skip rate")),
+    h("div", { class: "metric" }, h("b", {}, fmtHours(secs)), h("span", {}, "listening"))));
+  const per = {};
+  for (const p of plays) { const r = per[p.v] || (per[p.v] = { p: 0, s: 0, n: 0 }); r.n++; if (p.o === "completed") r.p++; if (p.o === "skipped") r.s++; }
+  const legend = () => h("div", { class: "legend" }, h("span", {}, h("i", { style: "background:var(--blue)" }), "played"), h("span", {}, h("i", { style: "background:var(--red)" }), "skipped"));
+  const top = Object.entries(per).sort((a, b) => b[1].p - a[1].p || b[1].n - a[1].n).slice(0, 15), max = Math.max(1, ...top.map(([, r]) => r.p + r.s));
+  v.append(h("h2", {}, "Most played"), h("div", { class: "hbars" }, top.map(([x, r]) => h("div", {},
+    h("div", { class: "hbar-label" }, h("span", {}, doc.songs[x].title), h("span", { class: "muted" }, `${r.p} / ${r.s}`)),
+    h("div", { class: "hbar-track" }, h("span", { class: "p", style: `width:${r.p / max * 100}%` }), h("span", { class: "s", style: `width:${r.s / max * 100}%` }))))), legend());
+  const sk = Object.entries(per).filter(([, r]) => r.n >= 3 && r.s).map(([x, r]) => [x, r, r.s / (r.p + r.s)]).sort((a, b) => b[2] - a[2]).slice(0, 10);
+  v.append(h("h2", {}, "Most skipped"), sk.length ? h("div", { class: "hbars" }, sk.map(([x, r, rate]) => h("div", {},
+    h("div", { class: "hbar-label" }, h("span", {}, doc.songs[x].title), h("span", { class: "muted" }, Math.round(rate * 100) + "% skipped")),
+    h("div", { class: "hbar-track" }, h("span", { class: "s", style: `width:${rate * 100}%` }))))) : h("p", { class: "muted small" }, "No song started at least 3 times has been skipped."));
+  const days = ui.period && ui.period <= 90 ? ui.period : 30, byDay = {};
+  for (const p of plays) { const d = new Date(p.s); const k = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+    const r = byDay[k] || (byDay[k] = { p: 0, s: 0 }); if (p.o === "completed") r.p++; if (p.o === "skipped") r.s++; }
+  const dayKeys = []; for (let i = days - 1; i >= 0; i--) { const d = new Date(Date.now() - i * 864e5); dayKeys.push(d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate()); }
+  const dmax = Math.max(1, ...dayKeys.map(k => byDay[k] ? byDay[k].p + byDay[k].s : 0));
+  v.append(h("h2", {}, `Last ${days} days`), h("div", { class: "vbars", role: "img", "aria-label": "Plays and skips per day" }, dayKeys.map(k => {
+    const r = byDay[k] || { p: 0, s: 0 };
+    return h("div", { class: "vbar", title: `${k}: ${r.p} played, ${r.s} skipped` }, h("span", { class: "p", style: `height:${r.p / dmax * 100}%` }), h("span", { class: "s", style: `height:${r.s / dmax * 100}%` }));
+  })), h("div", { class: "vaxis" }, h("span", {}, days + " days ago"), h("span", {}, "today")), legend());
+  const hours = Array(24).fill(0); for (const p of plays) hours[new Date(p.s).getHours()]++;
+  const hmax = Math.max(1, ...hours);
+  v.append(h("h2", {}, "When you listen"), h("div", { class: "vbars", role: "img", "aria-label": "Songs per hour of the day" },
+    hours.map((n, i) => h("div", { class: "vbar", title: `${i}:00 — ${n} songs` }, h("span", { class: "n", style: `height:${n / hmax * 100}%` })))),
+    h("div", { class: "vaxis" }, h("span", {}, "0:00"), h("span", {}, "6:00"), h("span", {}, "12:00"), h("span", {}, "18:00"), h("span", {}, "23:00")));
+  const counts = Object.keys(doc.songs).filter(x => passes(x, ui.stat)).map(x => (per[x] || { p: 0 }).p), cmax = Math.max(...counts);
+  const bins = Array(Math.min(cmax, 20) + 1).fill(0); for (const c of counts) bins[Math.min(c, 20)]++;
+  const bmax = Math.max(1, ...bins);
+  v.append(h("h2", {}, "How often each song is played"),
+    h("div", { class: "vbars", role: "img", "aria-label": "Number of songs by times played" },
+      bins.map((n, i) => h("div", { class: "vbar", title: `${n} songs played ${i}${i === 20 ? "+" : ""} times` }, h("span", { class: "n", style: `height:${n / bmax * 100}%` })))),
+    h("div", { class: "vaxis" }, h("span", {}, "never"), h("span", {}, bins.length - 1 + (cmax > 20 ? "+" : "") + " times")),
+    h("p", { class: "muted small" }, `${bins[0]} of ${counts.length} songs not played in this period.`));
+  // artists, decades, albums (from the song details)
+  const done = plays.filter(p => p.o === "completed"), withArtist = done.filter(p => det(p.v).artist);
+  if (!withArtist.length) { v.append(h("h2", {}, "Artists & years"), h("p", { class: "muted small" }, "Find song details in Library to see your listening by artist, album and year.")); return; }
+  const tally = (key) => { const m = {}; for (const p of done) { const k = key(p); if (k != null) m[k] = (m[k] || 0) + 1; } return m; };
+  const topArtists = Object.entries(tally(p => det(p.v).artist || null)).sort((a, b) => b[1] - a[1]).slice(0, 15), amax = Math.max(1, ...topArtists.map(x => x[1]));
+  v.append(h("h2", {}, "Most played artists"), h("div", { class: "hbars" }, topArtists.map(([a, n]) => h("div", {},
+    h("div", { class: "hbar-label" }, h("span", {}, a), h("span", { class: "muted" }, n)),
+    h("div", { class: "hbar-track" }, h("span", { class: "p", style: `width:${n / amax * 100}%` }))))));
+  const dec = tally(p => det(p.v).year ? Math.floor(det(p.v).year / 10) * 10 : null), decs = Object.keys(dec).map(Number).sort((a, b) => a - b);
+  if (decs.length) {
+    const all = []; for (let y = decs[0]; y <= decs[decs.length - 1]; y += 10) all.push(y);
+    const dmx = Math.max(1, ...Object.values(dec));
+    v.append(h("h2", {}, "Plays by decade the song came out"),
+      h("div", { class: "vbars", role: "img", "aria-label": "Plays by decade" }, all.map(y => h("div", { class: "vbar", title: `${y}s: ${dec[y] || 0} plays` },
+        h("span", { class: "n", style: `height:${(dec[y] || 0) / dmx * 100}%` })))),
+      h("div", { class: "vaxis" }, h("span", {}, all[0] + "s"), h("span", {}, all[all.length - 1] + "s")),
+      h("p", { class: "muted small" }, "Covers and live versions count in the year of that version."));
+  }
+  const albums = Object.entries(tally(p => { const d = det(p.v); return d.album && !["cover", "live"].includes(d.album) ? d.album + " — " + d.artist : null; }))
+    .sort((a, b) => b[1] - a[1]).slice(0, 10);
+  if (albums.length) v.append(h("h2", {}, "Most played albums"), h("ul", { class: "songs" }, albums.map(([a, n]) =>
+    h("li", {}, h("div", { class: "song-main" }, h("div", { class: "song-title" }, a.split(" — ")[0]), h("div", { class: "song-sub" }, a.split(" — ").slice(1).join(" — "))),
+      h("div", { class: "song-side" }, h("b", { class: "cp" }, n), " plays")))));
+  const nc = done.filter(p => det(p.v).album === "cover").length, nl = done.filter(p => det(p.v).album === "live").length;
+  if (nc || nl) v.append(h("p", { class: "muted small" }, `Also: ${nc} plays of covers and ${nl} of live versions.`));
+}
+
+function viewSettings(v) {
+  v.append(h("h1", {}, "Settings"));
+  const thrLabel = h("span", {}, `A song counts as played after ${settings.threshold}% of it`);
+  v.append(h("div", { class: "panel" }, h("h2", { style: "margin-top:0" }, "Listening"),
+    h("label", { class: "field" }, thrLabel, h("input", { type: "range", min: 10, max: 100, step: 5, value: settings.threshold, "aria-label": "Played after (percent)",
+      oninput: (e) => { settings.threshold = +e.target.value; thrLabel.textContent = `A song counts as played after ${settings.threshold}% of it`; save(); } })),
+    h("label", { class: "field" }, h("span", {}, "…or after this many seconds, if its length is unknown"),
+      h("input", { type: "number", min: 10, max: 900, step: 10, value: settings.minSecs, "aria-label": "Played after (seconds)", onchange: (e) => { settings.minSecs = Math.max(10, +e.target.value || 60); save(); } })),
+    h("label", { class: "field" }, h("span", {}, "Shuffles avoid recently played songs for about"),
+      h("select", { "aria-label": "Forget time", onchange: (e) => { settings.forget = e.target.value; save(); } },
+        Object.keys(FORGET_TIMES).map(k => h("option", { value: k, selected: k === settings.forget }, k))),
+      h("span", { class: "muted small", style: "margin-top:4px" }, "Right after you play a song through, shuffles rarely pick it; its chances come back gradually. Skips don't count.")),
+    h("label", { class: "switch" }, h("span", {}, "Keep the screen on while playing (on phones, the video stops if the screen turns off)"),
+      h("input", { type: "checkbox", checked: settings.keepAwake, onchange: (e) => { settings.keepAwake = e.target.checked; save(); wake(e.target.checked && Q.playing); } }))));
+  const f = (key, label, extra = {}) => h("label", { class: "field" }, h("span", {}, label),
+    h("input", { type: "text", value: settings.sync[key], autocomplete: "off", autocapitalize: "off", spellcheck: "false", "aria-label": label, ...extra,
+      oninput: (e) => { settings.sync[key] = e.target.value; save();
+        const b = document.getElementById("btnSyncNow"); if (b) b.disabled = !syncReady() || syncing; } }));
+  const ls = settings.lastSync;
+  v.append(h("div", { class: "panel" }, h("h2", { style: "margin-top:0" }, "Sync with GitHub"),
+    h("p", { class: "muted small", style: "margin-top:0" }, "Optional. Keeps your library the same on your devices, and backed up, through a file in a private repository on your own GitHub account. Without it, everything stays in this browser only."),
+    f("owner", "GitHub user name"), f("repo", "Private repository", { placeholder: "playlist-data" }), f("path", "File name"),
+    f("token", "Access token", { type: "password" }),
+    h("label", { class: "switch" }, h("span", {}, "Sync automatically (when the app opens and after changes)"),
+      h("input", { type: "checkbox", checked: settings.autoSync, onchange: (e) => { settings.autoSync = e.target.checked; save(); } })),
+    h("div", { class: "row" }, h("button", { class: "btn primary", id: "btnSyncNow", disabled: !syncReady() || syncing, onclick: () => syncNow(false) }, syncing ? "Syncing…" : "Sync now"),
+      h("span", { class: "muted small", id: "syncStatus" }, ls ? (ls.ok ? "Last synced " + new Date(ls.at).toLocaleString() : "Last sync failed: " + ls.msg) : "Not synced yet"))));
+  const sf = (key, label, extra = {}) => h("label", { class: "field" }, h("span", {}, label),
+    h("input", { type: "text", value: settings.shared[key] || "", autocomplete: "off", autocapitalize: "off", spellcheck: "false", "aria-label": "Shared: " + label, ...extra,
+      oninput: (e) => { settings.shared[key] = e.target.value; save(); const b = document.getElementById("btnShared"); if (b) b.disabled = !sharedReady() || sharedSyncing; } }));
+  const sl = settings.sharedLast;
+  v.append(h("div", { class: "panel" }, h("h2", { style: "margin-top:0" }, "Shared playlist"),
+    h("p", { class: "muted small", style: "margin-top:0" }, "Optional. One playlist you and your friends all edit, kept in a private repository of a GitHub organization you're all members of. Your library, other playlists and listening history stay yours."),
+    h("label", { class: "field" }, h("span", {}, "Your name (shown next to the songs you add)"),
+      h("input", { type: "text", value: settings.name, "aria-label": "Your name", oninput: (e) => { settings.name = e.target.value.trim(); save(); } })),
+    sf("owner", "Organization"), sf("repo", "Repository", { placeholder: "shared-playlist" }), sf("path", "File name"), sf("token", "Access token", { type: "password" }),
+    h("div", { class: "row" }, h("button", { class: "btn primary", id: "btnShared", disabled: !sharedReady() || sharedSyncing, onclick: () => { ensurePersist(); syncShared(false); } },
+      sharedSyncing ? "Syncing…" : "Sync shared playlist"),
+      h("span", { class: "muted small" }, sl ? (sl.ok ? "Last synced " + new Date(sl.at).toLocaleString() : "Last sync failed: " + sl.msg) : "Not synced yet"))));
+  v.append(h("div", { class: "panel", id: "backupPanel" }, h("h2", { style: "margin-top:0" }, "Backup and sharing"),
+    h("p", { class: "muted small", style: "margin-top:0" }, "Download everything as a file, or open a backup or a shared file: its contents are added to what's here, nothing is overwritten. “Share songs & playlists” makes a file without your play history, to give to a friend."),
+    h("div", { class: "row" },
+      h("button", { class: "btn", onclick: downloadBackup }, "Download backup"),
+      h("button", { class: "btn", onclick: shareSongs }, "Share songs & playlists"),
+      h("label", { class: "btn" }, "Restore from file", h("input", { type: "file", accept: ".json,application/json", hidden: true, onchange: restoreBackup })))));
+  v.append(h("div", { class: "panel" }, h("h2", { style: "margin-top:0" }, "This browser"),
+    h("p", { class: "muted small", style: "margin-top:0" }, "Your library is stored in this browser. Clearing the browser's data for this site erases it: what's synced stays on GitHub, and a downloaded backup can be restored."),
+    h("p", { class: "small", id: "persistStatus", style: "margin-top:0" }),
+    h("div", { class: "row" }, h("button", { class: "btn", id: "btnPersist", hidden: true, onclick: async () => { await ensurePersist(); render(); } }, "Protect from automatic cleanup"),
+      h("button", { class: "btn danger", onclick: eraseDialog }, "Erase data on this browser"))));
+  if (navigator.storage && navigator.storage.persisted) navigator.storage.persisted().then(p => {
+    const el = document.getElementById("persistStatus"), b = document.getElementById("btnPersist"); if (!el) return;
+    el.textContent = p ? "✓ Protected: the browser won't remove this data by itself when space runs low." : "Not yet protected from automatic cleanup.";
+    if (b) b.hidden = p; });
+}
+function renderSyncStatus(text) { const el = document.getElementById("syncStatus"); if (el) el.textContent = text; }
+
+/* ═════════════════════ dialogs ═════════════════════ */
+function openDialog(...content) { const d = $("dlg"); d.replaceChildren(h("div", { class: "dlg" }, ...content)); if (!d.open) d.showModal(); return d; }
+const closeDialog = () => $("dlg").close();
+$("dlg").addEventListener("click", (e) => { if (e.target === $("dlg")) closeDialog(); });
+function songDialog(v, back) {
+  const s = doc.songs[v]; if (!s) return;
+  const d = det(v), pls = playlistsSorted();
+  const done = () => { changed(); if (back) back(); else closeDialog(); };
+  const field = (label, key, type = "text", wide = false) => h("label", { class: "field" + (wide ? " wide" : "") }, h("span", {}, label),
+    h("input", { type, value: d[key] ?? "", "aria-label": label, "data-k": key, autocomplete: "off" }));
+  const fields = h("div", { class: "fields" }, field("Artist", "artist"), field("Song", "title"), field("Album", "album"), field("Year", "year", "number"),
+    d.kind === "cover" || d.original_artist ? field("Original artist (for covers)", "original_artist", "text", true) : null);
+  const read = () => { const o = {}; for (const i of fields.querySelectorAll("input")) o[i.dataset.k] = i.value.trim() || null;
+    o.year = o.year && /^\d{4}$/.test(o.year) ? +o.year : null; return o; };
+  const status = { confident: "Found on MusicBrainz.", manual: "Set by you: later look-ups won't change these.", check: "To check: this is a best guess.",
+                   not_found: "Not found on MusicBrainz." }[d.status] || "Not looked up yet.";
+  const opts = d.candidates || []; let pick = 0;
+  const title = h("input", { type: "text", value: s.title, "aria-label": "Video title" });
+  const plPick = h("select", { "aria-label": "Playlist" }, sharedOn() ? h("option", { value: SHARED_ID }, sharedName()) : null,
+    pls.map(([uid, p]) => h("option", { value: uid }, p.name)));
+  let armed = false;
+  openDialog(h("h2", {}, d.title && d.artist ? d.title : s.title),
+    h("p", { class: "muted small", style: "margin:0" }, d.title && d.artist ? `${d.artist}${d.year ? ", " + d.year : ""}. Video: ${s.title} — ${s.channel || ""}` : (s.channel || "")),
+    h("div", { class: "row" }, h("button", { class: "btn primary", onclick: () => { closeDialog(); playFrom([v], null, 0); } }, "Play now"),
+      h("a", { class: "btn", href: watchUrl(v), target: "_blank", rel: "noopener" }, "Open on YouTube"),
+      back ? h("button", { class: "btn quiet", onclick: back }, "Back to the list") : null),
+    h("div", { class: "scroll", style: "border:0;overflow:auto" },
+      h("h3", { class: "sec" }, "Song details"),
+      h("p", { class: "muted small", style: "margin:0 0 8px" }, status, d.note ? " " + d.note : ""),
+      fields,
+      h("div", { class: "row" },
+        h("button", { class: "btn primary", onclick: () => { setDetails(v, read()); toast("Saved"); done(); } }, "Save details"),
+        h("button", { class: "btn", disabled: scan.running, title: scan.running ? "Wait for the look-up to finish" : null, onclick: async (e) => {
+          e.target.disabled = true; e.target.textContent = "Looking up…";
+          try { const r = await resolveDetails(s.title, s.channel); touchSong(v, { details: { ...r, scanned_at: utcNow() } }); changed({ noRender: true }); songDialog(v, back); }
+          catch (err) { toast(err.message); e.target.disabled = false; e.target.textContent = "Look up again"; } } }, "Look up again"),
+        h("button", { class: "btn quiet", onclick: () => { setDetails(v, { artist: null, title: null, album: null, year: null, original_artist: null }); toast("Saved without details"); done(); } }, "No details")),
+      opts.length ? h("div", {}, h("h3", { class: "sec" }, "Other matches on MusicBrainz"),
+        d.kind === "cover" || d.kind === "live" ? h("p", { class: "muted small", style: "margin:0 0 6px" }, "For covers and live versions, a match only changes which original song it is.") : null,
+        opts.map((o, i) => h("label", { class: "radio-row" }, h("input", { type: "radio", name: "opt", checked: i === 0, onchange: () => pick = i }),
+          h("span", {}, `${o.artist} — ${o.title} (${o.album || "no album"}, ${o.year || "year unknown"})`))),
+        h("button", { class: "btn", onclick: () => { touchSong(v, { details: { ...applyOption(d, opts[pick]), status: "manual", scanned_at: utcNow() } }); toast("Saved"); done(); } }, "Use this match")) : null,
+      pls.length || sharedOn() ? h("div", {}, h("h3", { class: "sec" }, "Playlists"), h("div", { class: "row" }, h("div", { class: "grow" }, plPick),
+        h("button", { class: "btn", onclick: () => {
+          if (plPick.value === SHARED_ID) { if (!present(shared.items[v])) sharedAdd([v]); toast("Added to " + sharedName()); return; }
+          const p = doc.playlists[plPick.value]; if (!p.songs.includes(v)) { p.songs.push(v); touchPlaylist(plPick.value); changed(); }
+          toast("Added to " + p.name); } }, "Add to playlist"))) : null,
+      h("h3", { class: "sec" }, "Video title"),
+      h("div", { class: "row" }, h("div", { class: "grow" }, title), h("button", { class: "btn", onclick: () => {
+        if (title.value.trim()) { touchSong(v, { title: title.value.trim() }); toast("Renamed"); done(); } } }, "Rename"))),
+    h("div", { class: "actions" },
+      h("button", { class: "btn danger", onclick: (e) => {
+        if (present(shared.items[v])) { toast("This song is in the shared playlist: remove it from there first."); return; }
+        if (!armed) { armed = true; e.target.textContent = "Tap again to delete, with its play history"; return; }
+        if (Q.cur && Q.cur.v === v) stopAll();
+        delete doc.songs[v]; doc.tombstones["song:" + v] = utcNow();
+        for (const [k, p] of Object.entries(doc.plays)) if (p.v === v) delete doc.plays[k];
+        for (const [uid, p] of Object.entries(doc.playlists)) if (p.songs.includes(v)) { p.songs = p.songs.filter(x => x !== v); touchPlaylist(uid); }
+        changed(); closeDialog(); toast("Deleted"); } }, "Delete song"),
+      h("button", { class: "btn quiet", onclick: closeDialog }, "Close")));
+}
+function reviewDialog() {
+  const list = Object.keys(doc.songs).filter(v => ["check", "not_found"].includes(det(v).status))
+    .sort((a, b) => (det(a).status === "not_found") - (det(b).status === "not_found") || doc.songs[a].title.localeCompare(doc.songs[b].title));
+  if (!list.length) { closeDialog(); toast("Nothing left to check"); render(); return; }
+  openDialog(h("h2", {}, "Songs to check"),
+    h("p", { class: "muted small", style: "margin:0" }, "Tap a song to confirm, correct or look it up again. Songs you save are never changed by later look-ups."),
+    h("div", { class: "scroll" }, h("ul", { class: "songs flat" }, list.map(v => songRow(v, {
+      status: det(v).status === "check" ? "To check" : "Not found", showVideo: true, onclick: () => songDialog(v, reviewDialog) })))),
+    h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: () => { closeDialog(); render(); } }, "Close")));
+}
+function duplicatesDialog() {
+  const groups = duplicateGroups();
+  if (!groups.length) { toast("No duplicates found"); return; }
+  const chosen = groups.map(() => true), keep = groups.map(g => g[0]);
+  const btn = h("button", { class: "btn primary" }); let armed = false;
+  const upd = () => { const n = groups.reduce((a, g, i) => a + (chosen[i] ? g.length - 1 : 0), 0), w = n === 1 ? "copy" : "copies";
+    btn.disabled = !n; btn.textContent = armed ? `Tap again to remove ${n} ${w}` : `Remove ${n} duplicate ${w}`; };
+  const label = (x) => `${doc.songs[x].title} — ${doc.songs[x].channel || "unknown channel"}, ${fmt(doc.songs[x].duration)}, ${st(x).plays} plays`;
+  const rows = groups.map((g, i) => h("div", { class: "dup" },
+    h("label", { class: "check-row" }, h("input", { type: "checkbox", checked: true, onchange: (e) => { chosen[i] = e.target.checked; armed = false; upd(); } }),
+      h("span", { class: "grow" }, h("div", { class: "song-title" }, doc.songs[g[0]].title), h("div", { class: "song-sub" }, g.length + " copies"))),
+    h("details", { class: "dup-copies" }, h("summary", {}, "Copies: choose which one to keep"),
+      g.map(x => h("label", { class: "radio-row" }, h("input", { type: "radio", name: "keep" + i, checked: x === g[0], onchange: () => { keep[i] = x; } }), h("span", {}, label(x)))))));
+  btn.onclick = () => {
+    if (!armed) { armed = true; upd(); return; }
+    const plan = groups.map((g, i) => chosen[i] ? [keep[i], g.filter(x => x !== keep[i])] : null).filter(Boolean);
+    const n = mergeDuplicates(plan); closeDialog(); toast(`Removed ${n} duplicate ${n === 1 ? "copy" : "copies"}`);
+  };
+  openDialog(h("h2", {}, `${groups.length} song${groups.length > 1 ? "s have" : " has"} more than one copy`),
+    h("p", { class: "muted small", style: "margin:0" }, "Same artist and title, ignoring extras like “(Official Video)” or “[4K]”. One copy of each is kept: plays and skips of the others are added to it, and it takes their place in your playlists."),
+    h("div", { class: "scroll" }, rows),
+    h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"), btn));
+  upd();
+}
+function addSongsDialog() {
+  const ta = h("textarea", { placeholder: "https://www.youtube.com/watch?v=…\nhttps://youtu.be/…", "aria-label": "YouTube links" });
+  const pls = playlistsSorted();
+  const pick = h("select", { "aria-label": "Also add to" }, h("option", { value: "" }, "Don't add to a playlist"), pls.map(([uid, p]) => h("option", { value: uid }, p.name)));
+  openDialog(h("h2", {}, "Add songs"), h("p", { class: "muted small", style: "margin:0" }, "Paste YouTube links or video IDs, one per line."), ta,
+    h("label", { class: "field" }, h("span", {}, "Also add them to"), pick),
+    h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"),
+      h("button", { class: "btn primary", onclick: async () => {
+        ensurePersist();
+        const lines = ta.value.split(/\s+/).filter(Boolean); let added = 0, had = 0, bad = 0; const ids = [];
+        for (const l of lines) { const vid = parseVideoId(l); if (!vid) { bad++; continue; } ids.push(vid);
+          if (doc.songs[vid]) { had++; continue; }
+          doc.songs[vid] = { title: "YouTube video " + vid, channel: null, duration: null, added_at: utcNow(), updated_at: utcNow(), embed_blocked: false }; added++;
+          delete doc.tombstones["song:" + vid]; }
+        if (pick.value) { const p = doc.playlists[pick.value]; for (const vid of ids) if (!p.songs.includes(vid)) p.songs.push(vid); touchPlaylist(pick.value); }
+        closeDialog(); changed();
+        toast([added && `Added ${added} songs`, had && `${had} already in your library`, bad && `${bad} lines weren't YouTube links`].filter(Boolean).join(". ") || "Nothing to add");
+        for (const vid of ids) fetchTitle(vid);
+      } }, "Add songs")));
+  setTimeout(() => ta.focus(), 50);
+}
+async function fetchTitle(vid) {   // best effort; titles are also filled in the first time a song plays
+  const s = doc.songs[vid]; if (!s || !isPlaceholder(s.title)) return;
+  try {
+    const r = await fetch("https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent(watchUrl(vid)));
+    if (!r.ok) return; const d = await r.json();
+    if (d.title && doc.songs[vid] && isPlaceholder(doc.songs[vid].title)) { touchSong(vid, { title: d.title, channel: d.author_name || null }); changed(); }
+  } catch (e) { /* blocked by the browser: filled in when played */ }
+}
+function newPlaylistDialog() {
+  const name = h("input", { type: "text", placeholder: "Playlist name", "aria-label": "Playlist name" });
+  const create = () => { const n = name.value.trim(); if (!n) return; const uid = newUid();
+    doc.playlists[uid] = { name: n, songs: [], created_at: utcNow(), updated_at: utcNow() }; closeDialog(); ui.playlist = uid; changed(); };
+  name.addEventListener("keydown", (e) => { if (e.key === "Enter") create(); });
+  openDialog(h("h2", {}, "New playlist"), name, h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"),
+    h("button", { class: "btn primary", onclick: create }, "Create playlist")));
+  setTimeout(() => name.focus(), 50);
+}
+function renameDialog(uid) {
+  const p = doc.playlists[uid], name = h("input", { type: "text", value: p.name, "aria-label": "Playlist name" });
+  openDialog(h("h2", {}, "Rename playlist"), name, h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"),
+    h("button", { class: "btn primary", onclick: () => { if (name.value.trim()) { p.name = name.value.trim(); touchPlaylist(uid); closeDialog(); changed(); } } }, "Rename")));
+}
+function deletePlaylistDialog(uid) {
+  const p = doc.playlists[uid];
+  openDialog(h("h2", {}, `Delete “${p.name}”?`), h("p", { class: "muted", style: "margin:0" }, "The songs stay in your library, with their play history."),
+    h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"),
+      h("button", { class: "btn danger", onclick: () => { delete doc.playlists[uid]; doc.tombstones["playlist:" + uid] = utcNow(); ui.playlist = null; closeDialog(); changed(); } }, "Delete playlist")));
+}
+function pickSongsDialog(uid) {
+  const isShared = uid === SHARED_ID, chosen = new Set();
+  const p = isShared ? { name: sharedName(), songs: sharedList() } : doc.playlists[uid];
+  const cands = allSongsOrdered().filter(x => !p.songs.includes(x));
+  const list = h("div", { class: "scroll" }), btn = h("button", { class: "btn primary", disabled: true }, "Add songs");
+  const search = h("input", { type: "search", placeholder: "Search", "aria-label": "Search songs", oninput: fill });
+  function fill() {
+    const q = search.value.trim().toLowerCase();
+    list.replaceChildren(...cands.filter(x => !q || (doc.songs[x].title + " " + (doc.songs[x].channel || "")).toLowerCase().includes(q)).map(x =>
+      h("label", { class: "check-row" }, h("input", { type: "checkbox", checked: chosen.has(x), onchange: (e) => { e.target.checked ? chosen.add(x) : chosen.delete(x);
+        btn.disabled = !chosen.size; btn.textContent = chosen.size ? `Add ${chosen.size} songs` : "Add songs"; } }),
+        h("span", { class: "grow" }, h("div", { class: "song-title" }, doc.songs[x].title), h("div", { class: "song-sub" }, doc.songs[x].channel || "")))));
+    if (!list.children.length) list.append(h("p", { class: "muted", style: "padding:12px" }, cands.length ? "No matches." : "Every song is already in this playlist."));
+  }
+  btn.onclick = () => {
+    if (isShared) { sharedAdd(cands.filter(x => chosen.has(x))); closeDialog(); return; }
+    for (const x of cands) if (chosen.has(x)) p.songs.push(x); touchPlaylist(uid); closeDialog(); changed(); };
+  openDialog(h("h2", {}, "Add to " + p.name), search, list, h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"), btn));
+  fill();
+}
+function eraseDialog() {
+  openDialog(h("h2", {}, "Erase data on this phone?"), h("p", { class: "muted", style: "margin:0" }, "Your songs, playlists and history on this phone are deleted. If you use sync, you can get everything back with Sync now."),
+    h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"),
+      h("button", { class: "btn danger", onclick: () => { stopAll(); doc = emptyDoc(); settings.lastSync = null; closeDialog(); changed({ noSync: true }); toast("Erased"); } }, "Erase")));
+}
+function downloadBackup() {
+  const blob = new Blob([JSON.stringify({ ...doc, updated_at: utcNow() })], { type: "application/json" });
+  const a = h("a", { href: URL.createObjectURL(blob), download: `playlist-backup-${new Date().toISOString().slice(0, 10)}.json` });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function shareSongs() {
+  const songs = {}; for (const [v, s] of Object.entries(doc.songs)) songs[v] = { ...s, details: s.details ? { ...s.details, candidates: [] } : undefined };
+  const blob = new Blob([JSON.stringify({ ...emptyDoc(), songs, playlists: doc.playlists, updated_at: utcNow() })], { type: "application/json" });
+  const a = h("a", { href: URL.createObjectURL(blob), download: `playlist-songs-${new Date().toISOString().slice(0, 10)}.json` });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast("File saved: it has your songs and playlists, without your play history");
+}
+async function restoreBackup(e) {
+  const file = e.target.files[0]; if (!file) return;
+  ensurePersist();
+  try { const d = JSON.parse(await file.text()); if (d.format !== FORMAT) throw new Error();
+    const before = counts(doc); doc = mergeDocs(doc, d); changed(); const after = counts(doc);
+    toast(`Restored: ${after.songs - before.songs} new songs, ${after.plays - before.plays} plays`);
+  } catch (err) { toast("That file isn't a Playlist Manager backup."); }
+  e.target.value = "";
+}
+
+/* ═════════════════════ navigation & start ═════════════════════ */
+const VIEWS = { player: viewPlayer, library: viewLibrary, playlists: viewPlaylists, stats: viewStats, settings: viewSettings };
+function go(tab) {   // tapping the tab you're on goes back to its main list
+  if (tab === ui.tab && tab === "playlists") ui.playlist = null;
+  ui.tab = tab; render(); window.scrollTo(0, 0);
+}
+function render() {
+  const v = $("view"), focused = document.activeElement, fid = focused && focused.getAttribute("aria-label");
+  const sel = focused && focused.selectionStart;
+  const next = h("main", { id: "view" }); VIEWS[ui.tab](next); v.replaceWith(next);
+  if (fid && focused.tagName === "INPUT" && !$("dlg").open) { const el = next.querySelector(`[aria-label="${CSS.escape(fid)}"]`); if (el) { el.focus(); try { el.setSelectionRange(sel, sel); } catch (e) {} } }
+  for (const b of document.querySelectorAll("nav.tabs button")) b.setAttribute("aria-current", b.dataset.tab === ui.tab ? "page" : "false");
+  renderDeck();
+}
+for (const b of document.querySelectorAll("nav.tabs button")) b.onclick = () => go(b.dataset.tab);
+
+// laptop: when the player is scrolled out of view, it floats as a mini-player in the top-right corner
+// (it stays visible, as YouTube requires for a video that starts by itself)
+const wide = window.matchMedia("(min-width: 900px)");
+let deckMini = false;
+function checkDeck() {
+  const deck = $("deck"), holder = $("deckHolder");
+  let on = deckMini;
+  if (!wide.matches || deck.hidden) on = false;
+  else { const b = holder.getBoundingClientRect().bottom; if (!deckMini && b < 40) on = true; else if (deckMini && b > 120) on = false; }
+  if (on === deckMini) return;
+  holder.style.minHeight = on ? holder.getBoundingClientRect().height + "px" : "";
+  deck.classList.toggle("mini", on); deckMini = on;
+}
+window.addEventListener("scroll", checkDeck, { passive: true });
+window.addEventListener("resize", checkDeck);
+setInterval(checkDeck, 500);
+window.__app = { mergeDocs, sameContent, mergeShared, syncShared, get shared() { return shared; }, get doc() { return doc; }, get Q() { return Q; }, settings: () => settings };
+
+(async () => {
+  try { await store.open(); const d = await store.get("doc"), s = await store.get("settings");
+    if (d) doc = normalize(d); if (s) settings = { ...settings, ...s, sync: { ...settings.sync, ...(s.sync || {}) }, shared: { ...settings.shared, ...(s.shared || {}) } };
+    const sh = await store.get("shared"); if (sh) shared = { ...emptyShared(), ...sh };
+  } catch (e) { toast("This browser won't let the app save data: your library won't be kept after closing."); }
+  render();
+  if (settings.autoSync && syncReady()) syncNow(true);
+  if (sharedReady()) syncShared(true);
+})();
+</script>
+</body>
+</html>
