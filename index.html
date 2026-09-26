@@ -173,6 +173,7 @@
   .progress-bar { height: 6px; background: var(--empty); border-radius: 3px; overflow: hidden; margin: 12px 0 6px; }
   .progress-bar > i { display: block; height: 100%; width: 0; background: var(--blue); transition: width .3s; }
   h3.sec { font: 600 1.05rem var(--title); margin: 16px 0 6px; }
+  .addto { border: 1.5px solid var(--line); border-radius: 12px; max-height: 190px; overflow: auto; margin-top: 4px; }
   .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
   .fields .wide { grid-column: 1 / -1; }
   .dup { border-top: 1px solid var(--line); }
@@ -1481,10 +1482,15 @@ function duplicatesDialog() {
 }
 function addSongsDialog() {
   const ta = h("textarea", { placeholder: "https://www.youtube.com/watch?v=…\nhttps://youtu.be/…", "aria-label": "YouTube links" });
-  const pls = playlistsSorted();
-  const pick = h("select", { "aria-label": "Also add to" }, h("option", { value: "" }, "Don't add to a playlist"), pls.map(([uid, p]) => h("option", { value: uid }, p.name)));
+  // "Also add them to": any combination of the shared playlist and your own playlists
+  const targets = [...(sharedOn() ? [[SHARED_ID, sharedName()]] : []), ...playlistsSorted().map(([uid, p]) => [uid, p.name])];
+  const ticked = new Set();
+  const pickBox = targets.length ? h("div", { class: "field" }, h("span", { class: "muted small" }, "Also add them to"),
+    h("div", { class: "addto" }, targets.map(([uid, name]) => h("label", { class: "check-row" },
+      h("input", { type: "checkbox", "aria-label": "Also add to " + name, onchange: (e) => { e.target.checked ? ticked.add(uid) : ticked.delete(uid); } }),
+      h("span", { class: "grow" }, name))))) : null;
   openDialog(h("h2", {}, "Add songs"), h("p", { class: "muted small", style: "margin:0" }, "Paste YouTube links or video IDs, one per line."), ta,
-    h("label", { class: "field" }, h("span", {}, "Also add them to"), pick),
+    pickBox,
     h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"),
       h("button", { class: "btn primary", onclick: async () => {
         ensurePersist();
@@ -1493,9 +1499,23 @@ function addSongsDialog() {
           if (doc.songs[vid]) { had++; continue; }
           doc.songs[vid] = { title: "YouTube video " + vid, channel: null, duration: null, added_at: utcNow(), updated_at: utcNow(), embed_blocked: false }; added++;
           delete doc.tombstones["song:" + vid]; }
-        if (pick.value) { const p = doc.playlists[pick.value]; for (const vid of ids) if (!p.songs.includes(vid)) p.songs.push(vid); touchPlaylist(pick.value); }
+        const into = [];
+        for (const uid of ticked) {
+          if (uid === SHARED_ID) {
+            const fresh = ids.filter(v => !present(shared.items[v]));
+            if (fresh.length) sharedAdd(fresh);
+            into.push(sharedName());
+          } else {
+            const p = doc.playlists[uid]; if (!p) continue;          // looked up now (a sync may have run meanwhile)
+            const fresh = ids.filter(v => !p.songs.includes(v));
+            if (fresh.length) { p.songs.push(...fresh); touchPlaylist(uid); }
+            into.push(p.name);
+          }
+        }
         closeDialog(); changed();
-        toast([added && `Added ${added} songs`, had && `${had} already in your library`, bad && `${bad} lines weren't YouTube links`].filter(Boolean).join(". ") || "Nothing to add");
+        toast([added && `Added ${added} song${added === 1 ? "" : "s"}`, had && `${had} already in your library`, bad && `${bad} line${bad === 1 ? "" : "s"} weren't YouTube links`,
+               ids.length && into.length && `Also added to ${into.length > 1 ? into.slice(0, -1).join(", ") + " and " + into[into.length - 1] : into[0]}`]
+              .filter(Boolean).join(". ") || "Nothing to add");
         for (const vid of ids) fetchTitle(vid);
       } }, "Add songs")));
   setTimeout(() => ta.focus(), 50);
