@@ -1518,9 +1518,12 @@ function newPlaylistDialog() {
   setTimeout(() => name.focus(), 50);
 }
 function renameDialog(uid) {
-  const p = doc.playlists[uid], name = h("input", { type: "text", value: p.name, "aria-label": "Playlist name" });
+  const name = h("input", { type: "text", value: doc.playlists[uid].name, "aria-label": "Playlist name" });
   openDialog(h("h2", {}, "Rename playlist"), name, h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"),
-    h("button", { class: "btn primary", onclick: () => { if (name.value.trim()) { p.name = name.value.trim(); touchPlaylist(uid); closeDialog(); changed(); } } }, "Rename")));
+    h("button", { class: "btn primary", onclick: () => {
+      const now = doc.playlists[uid];        // as it is now, not when the box opened
+      if (!now) { closeDialog(); toast("This playlist was deleted on another device."); render(); return; }
+      if (name.value.trim()) { now.name = name.value.trim(); touchPlaylist(uid); closeDialog(); changed(); } } }, "Rename")));
 }
 function deletePlaylistDialog(uid) {
   const p = doc.playlists[uid];
@@ -1543,8 +1546,15 @@ function pickSongsDialog(uid) {
     if (!list.children.length) list.append(h("p", { class: "muted", style: "padding:12px" }, cands.length ? "No matches." : "Every song is already in this playlist."));
   }
   btn.onclick = () => {
-    if (isShared) { sharedAdd(cands.filter(x => chosen.has(x))); closeDialog(); return; }
-    for (const x of cands) if (chosen.has(x)) p.songs.push(x); touchPlaylist(uid); closeDialog(); changed(); };
+    const picked = cands.filter(x => chosen.has(x) && doc.songs[x]);
+    if (isShared) { sharedAdd(picked); closeDialog(); return; }
+    const now = doc.playlists[uid];          // as it is now: a sync may have finished while you were choosing
+    closeDialog();
+    if (!now) { toast("This playlist was deleted on another device."); render(); return; }
+    const fresh = picked.filter(x => !now.songs.includes(x));
+    now.songs.push(...fresh); touchPlaylist(uid); changed();
+    toast(`Added ${fresh.length} song${fresh.length === 1 ? "" : "s"} to ${now.name}`
+      + (fresh.length < picked.length ? ` (${picked.length - fresh.length} already there)` : "")); };
   openDialog(h("h2", {}, "Add to " + p.name), search, list, h("div", { class: "actions" }, h("button", { class: "btn quiet", onclick: closeDialog }, "Cancel"), btn));
   fill();
 }
